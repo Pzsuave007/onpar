@@ -14,6 +14,9 @@ import jwt
 import httpx
 from datetime import datetime, timezone, timedelta
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+from PIL import Image, ImageOps
+import io
+import base64 as b64_module
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -670,51 +673,42 @@ async def get_player_profile(user_id: str):
     return {"player": user_response(user), "stats": stats, "history": history}
 
 # --- Golf Course Endpoints ---
-SCORECARD_SCAN_PROMPT = """Analyze this golf scorecard image and extract tee information.
-Golf scorecards have multiple rows for different tees. Extract ONLY the 3 main tees: Blue, White, and Red (or Gold).
+SCORECARD_SCAN_PROMPT = """You are reading a golf scorecard photo. The image may be ROTATED (90, 180, or 270 degrees) - first determine the correct orientation by finding the HOLE row/column which goes 1,2,3...9,OUT,10,11...18,IN,TOT.
 
-Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
+CRITICAL RULES:
+1. Find the PAR row - it contains ONLY values of 3, 4, or 5 for each hole
+2. The OUT total (front 9 par) should be 34-37 typically
+3. The IN total (back 9 par) should be 34-37 typically  
+4. TOTAL par for 18 holes is typically 70-72
+5. VERIFY your par values add up to the printed OUT and IN totals on the card
+6. Read the Blue (longest), White (middle), and Red/Gold (shortest) tee yardages
+7. Blue yardages > White yardages > Red yardages for the SAME hole
+8. VERIFY yardage totals match the printed totals on the card
+
+Extract ONLY 3 tees: Blue, White, Red (if card says Gold/Red or just Red, use "Red").
+
+Return ONLY valid JSON (no markdown, no code blocks):
 {
-  "course_name": "Name of the golf course",
+  "course_name": "Name from the scorecard",
   "num_holes": 18,
   "tees": [
     {
-      "name": "Blue",
-      "color": "blue",
-      "total_yardage": 6200,
-      "holes": [
-        {"hole": 1, "par": 4, "yardage": 410},
-        {"hole": 2, "par": 3, "yardage": 185}
-      ]
+      "name": "Blue", "color": "blue", "total_yardage": 6293,
+      "holes": [{"hole": 1, "par": 4, "yardage": 406}, {"hole": 2, "par": 3, "yardage": 163}]
     },
     {
-      "name": "White",
-      "color": "white",
-      "total_yardage": 5500,
-      "holes": [
-        {"hole": 1, "par": 4, "yardage": 370},
-        {"hole": 2, "par": 3, "yardage": 155}
-      ]
+      "name": "White", "color": "white", "total_yardage": 5987,
+      "holes": [{"hole": 1, "par": 4, "yardage": 379}, {"hole": 2, "par": 3, "yardage": 145}]
     },
     {
-      "name": "Red",
-      "color": "red",
-      "total_yardage": 4800,
-      "holes": [
-        {"hole": 1, "par": 4, "yardage": 310},
-        {"hole": 2, "par": 3, "yardage": 120}
-      ]
+      "name": "Red", "color": "red", "total_yardage": 5105,
+      "holes": [{"hole": 1, "par": 4, "yardage": 342}, {"hole": 2, "par": 3, "yardage": 126}]
     }
   ]
 }
 
-Rules:
-- Extract exactly 3 tees: Blue (longest), White (middle), Red/Gold (shortest)
-- If the card has Gold tees instead of Red, use "Red" as name and "red" as color
-- For each tee extract per-hole: par and yardage
-- If pars differ between tees, include the correct par for each tee
-- If course name is not visible, use "Unknown Course"
-Return ONLY the JSON, nothing else."""
+DOUBLE-CHECK: Sum your par values for front 9 and back 9. They MUST match the OUT and IN totals printed on the card. If they don't, re-read the par values.
+Return ONLY the JSON."""
 
 @api_router.post("/courses/scan")
 async def scan_scorecard(request: Request):
@@ -726,12 +720,31 @@ async def scan_scorecard(request: Request):
     # Strip data URL prefix if present
     if "base64," in image_base64:
         image_base64 = image_base64.split("base64,")[1]
+    # Pre-process: auto-rotate image based on EXIF and ensure landscape
+    try:
+        img_bytes = b64_module.b64decode(image_base64)
+        img = Image.open(io.BytesIO(img_bytes))
+        img = ImageOps.exif_transpose(img)  # Fix EXIF rotation
+        # If portrait (taller than wide), rotate to landscape
+        if img.height > img.width:
+            img = img.rotate(90, expand=True)
+        # Resize if too large (keep quality but reduce tokens)
+        max_dim = 2048
+        if max(img.width, img.height) > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+        # Convert back to base64
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=90)
+        image_base64 = b64_module.b64encode(buf.getvalue()).decode()
+        logger.info(f"Image preprocessed: {img.width}x{img.height}")
+    except Exception as e:
+        logger.warning(f"Image preprocessing failed: {e}, using original")
     try:
         llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
         chat = LlmChat(
             api_key=llm_key,
             session_id=f"scan_{uuid.uuid4().hex[:8]}",
-            system_message="You are a golf scorecard data extractor. Return only valid JSON."
+            system_message="You are an expert at reading golf scorecards. You are extremely careful and precise with numbers. You always verify totals add up correctly before returning results. The scorecard image may be rotated - determine orientation first."
         ).with_model("openai", "gpt-4o")
         image_content = ImageContent(image_base64=image_base64)
         user_msg = UserMessage(text=SCORECARD_SCAN_PROMPT, file_contents=[image_content])
@@ -742,6 +755,12 @@ async def scan_scorecard(request: Request):
             text = text.split("\n", 1)[1] if "\n" in text else text[3:]
             text = text.rsplit("```", 1)[0]
         parsed = json.loads(text)
+        # Server-side validation
+        for tee in parsed.get("tees", []):
+            holes = tee.get("holes", [])
+            if holes:
+                tee["total_par"] = sum(h.get("par", 0) for h in holes)
+                tee["total_yardage"] = sum(h.get("yardage", 0) for h in holes)
         return parsed
     except json.JSONDecodeError:
         logger.error(f"AI returned non-JSON: {response[:200] if response else 'empty'}")

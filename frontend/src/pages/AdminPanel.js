@@ -332,6 +332,7 @@ export default function AdminPanel() {
               </Button>
             </div>
           </div>
+          <p className="text-xs text-[#6B6E66] -mt-2 mb-2">Tip: Take the photo with the scorecard flat and holes going left to right for best results. Always verify the pars after scanning.</p>
           {courses.length === 0 ? (
             <Card className="border-[#E2E3DD] shadow-none">
               <CardContent className="py-12 text-center">
@@ -562,7 +563,7 @@ export default function AdminPanel() {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: 'Outfit' }}>{scannedCourse?.course_id ? 'Edit Course' : 'Review Scanned Course'}</DialogTitle>
-            <DialogDescription>Use arrows to adjust pars. Switch tees with tabs.</DialogDescription>
+            <DialogDescription>{scannedCourse?.course_id ? 'Edit the pars and yardages below.' : 'AI may misread some numbers. Please verify pars and yardages - use + and - buttons to fix.'}</DialogDescription>
           </DialogHeader>
           {scannedCourse && (() => {
             const tees = scannedCourse.tees || [];
