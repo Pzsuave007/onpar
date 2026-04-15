@@ -5,9 +5,8 @@ import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trophy, MapPin, Calendar, Users } from 'lucide-react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Trophy, MapPin, Calendar, Users, ChevronDown, ChevronUp, User } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 function formatToPar(score) {
   if (score === 0) return 'E';
@@ -20,6 +19,54 @@ function scoreColor(score) {
   return 'text-[#4A5D23] font-bold';
 }
 
+// Score indicator: colored circle for each hole
+function HoleIndicator({ strokes, par }) {
+  if (!strokes || strokes === 0) return <span className="text-[#D6D7D2]">-</span>;
+  const diff = strokes - par;
+  // Eagle or better (-2 or less)
+  if (diff <= -2) return (
+    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-400 text-white text-xs font-bold" title={`Eagle: ${strokes}`}>
+      {strokes}
+    </span>
+  );
+  // Birdie (-1)
+  if (diff === -1) return (
+    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#C96A52] text-white text-xs font-bold" title={`Birdie: ${strokes}`}>
+      {strokes}
+    </span>
+  );
+  // Par (0)
+  if (diff === 0) return (
+    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#4A5D23] text-[#4A5D23] text-xs font-bold" title={`Par: ${strokes}`}>
+      {strokes}
+    </span>
+  );
+  // Bogey (+1)
+  if (diff === 1) return (
+    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#1D2D44] text-white text-xs font-bold" title={`Bogey: ${strokes}`}>
+      {strokes}
+    </span>
+  );
+  // Double bogey+ (+2 or more)
+  return (
+    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#1D2D44] text-white text-xs font-bold ring-2 ring-[#1D2D44]/30" title={`+${diff}: ${strokes}`}>
+      {strokes}
+    </span>
+  );
+}
+
+function PlayerAvatar({ name, picture }) {
+  if (picture) {
+    return <img src={picture} alt={name} className="w-8 h-8 rounded-full object-cover border border-[#E2E3DD]" />;
+  }
+  const initials = (name || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  return (
+    <div className="w-8 h-8 rounded-full bg-[#1B3C35] flex items-center justify-center text-white text-xs font-bold shrink-0">
+      {initials}
+    </div>
+  );
+}
+
 export default function PublicLeaderboard() {
   const { tournamentId } = useParams();
   const navigate = useNavigate();
@@ -27,6 +74,7 @@ export default function PublicLeaderboard() {
   const [selectedId, setSelectedId] = useState(tournamentId || '');
   const [leaderboardData, setLeaderboardData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [expandedPlayer, setExpandedPlayer] = useState(null);
 
   useEffect(() => {
     axios.get(`${API}/tournaments`).then(res => {
@@ -43,6 +91,7 @@ export default function PublicLeaderboard() {
   useEffect(() => {
     if (!selectedId) return;
     setLoading(true);
+    setExpandedPlayer(null);
     axios.get(`${API}/leaderboard/${selectedId}`).then(res => {
       setLeaderboardData(res.data);
     }).catch(() => {
@@ -53,6 +102,10 @@ export default function PublicLeaderboard() {
   const handleSelect = (val) => {
     setSelectedId(val);
     navigate(`/leaderboard/${val}`, { replace: true });
+  };
+
+  const toggleExpand = (userId) => {
+    setExpandedPlayer(prev => prev === userId ? null : userId);
   };
 
   const tournament = leaderboardData?.tournament;
@@ -127,11 +180,33 @@ export default function PublicLeaderboard() {
             </CardContent>
           </Card>
 
-          {/* Leaderboard Table */}
+          {/* Score Legend */}
+          <div className="flex flex-wrap items-center gap-4 mb-4 px-1">
+            <span className="text-xs text-[#6B6E66] font-bold uppercase tracking-wider">Legend:</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-amber-400 inline-block" />
+              <span className="text-xs text-[#6B6E66]">Eagle</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-[#C96A52] inline-block" />
+              <span className="text-xs text-[#6B6E66]">Birdie</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full border-2 border-[#4A5D23] inline-block" />
+              <span className="text-xs text-[#6B6E66]">Par</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-[#1D2D44] inline-block" />
+              <span className="text-xs text-[#6B6E66]">Bogey+</span>
+            </div>
+          </div>
+
+          {/* Leaderboard */}
           <Card className="border-[#E2E3DD] shadow-none overflow-hidden">
             <CardHeader className="py-4 bg-[#1B3C35]">
               <CardTitle className="text-white text-sm font-bold uppercase tracking-wider flex items-center gap-2">
                 <Trophy className="h-4 w-4" /> Standings
+                <span className="ml-auto text-[10px] font-normal opacity-60">Tap player to see holes</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -140,62 +215,161 @@ export default function PublicLeaderboard() {
                   <p className="text-sm">No scores submitted yet.</p>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-[#E8E9E3]/40 hover:bg-[#E8E9E3]/40">
-                      <TableHead className="w-16 text-center font-bold text-[#1B3C35]">Pos</TableHead>
-                      <TableHead className="font-bold text-[#1B3C35]">Player</TableHead>
-                      <TableHead className="text-center font-bold text-[#1B3C35]">
-                        {isStableford ? 'Points' : 'To Par'}
-                      </TableHead>
-                      {!isStableford && (
-                        <TableHead className="text-center font-bold text-[#1B3C35] hidden sm:table-cell">Total</TableHead>
-                      )}
-                      <TableHead className="text-center font-bold text-[#1B3C35]">Thru</TableHead>
-                      {leaderboard[0]?.rounds?.length > 1 && (
-                        leaderboard[0].rounds.map((_, i) => (
-                          <TableHead key={i} className="text-center font-bold text-[#1B3C35] hidden md:table-cell">
-                            R{i + 1}
-                          </TableHead>
-                        ))
-                      )}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {leaderboard.map((entry, i) => (
-                      <TableRow key={entry.user_id} className="leaderboard-row hover:bg-[#E8E9E3]/30"
-                        data-testid={`leaderboard-row-${i}`}>
-                        <TableCell className="text-center font-bold tabular-nums text-[#1B3C35]">
-                          {entry.tied ? 'T' : ''}{entry.position}
-                        </TableCell>
-                        <TableCell className="font-medium text-[#1B3C35]">
-                          <RouterLink to={`/player/${entry.user_id}`} className="hover:underline hover:text-[#C96A52] transition-colors"
-                            data-testid={`player-link-${entry.user_id}`}>
-                            {entry.player_name}
-                          </RouterLink>
-                        </TableCell>
-                        <TableCell className={`text-center tabular-nums text-lg ${isStableford ? 'font-bold text-[#1B3C35]' : scoreColor(entry.total_to_par)}`}>
-                          {isStableford ? entry.stableford_points : formatToPar(entry.total_to_par)}
-                        </TableCell>
-                        {!isStableford && (
-                          <TableCell className="text-center tabular-nums text-[#6B6E66] hidden sm:table-cell">
+                <div>
+                  {/* Header */}
+                  <div className="grid grid-cols-[3rem_1fr_4rem_4rem_3rem] sm:grid-cols-[3rem_1fr_5rem_5rem_4rem_repeat(var(--rounds),4rem)] items-center px-3 py-2.5 bg-[#E8E9E3]/50 border-b border-[#E2E3DD] text-xs font-bold text-[#1B3C35] uppercase tracking-wider"
+                    style={{ '--rounds': leaderboard[0]?.rounds?.length > 1 ? leaderboard[0].rounds.length : 0 }}>
+                    <span className="text-center">Pos</span>
+                    <span>Player</span>
+                    <span className="text-center">{isStableford ? 'Pts' : 'To Par'}</span>
+                    <span className="text-center hidden sm:block">Total</span>
+                    <span className="text-center">Thru</span>
+                  </div>
+
+                  {/* Rows */}
+                  {leaderboard.map((entry, i) => {
+                    const isExpanded = expandedPlayer === entry.user_id;
+                    const sortedRounds = [...(entry.rounds || [])].sort((a, b) => a.round_number - b.round_number);
+
+                    return (
+                      <div key={entry.user_id} data-testid={`leaderboard-row-${i}`}>
+                        {/* Main row */}
+                        <div
+                          className={`grid grid-cols-[3rem_1fr_4rem_4rem_3rem] sm:grid-cols-[3rem_1fr_5rem_5rem_4rem] items-center px-3 py-3 border-b border-[#E2E3DD] cursor-pointer transition-colors ${isExpanded ? 'bg-[#E8E9E3]/40' : 'hover:bg-[#E8E9E3]/20'} ${i === 0 ? 'bg-amber-50/30' : ''}`}
+                          onClick={() => toggleExpand(entry.user_id)}
+                          data-testid={`player-row-click-${i}`}
+                        >
+                          {/* Position */}
+                          <span className="text-center font-bold tabular-nums text-[#1B3C35]">
+                            {entry.tied ? 'T' : ''}{entry.position}
+                          </span>
+
+                          {/* Player name + avatar */}
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <PlayerAvatar name={entry.player_name} picture={entry.picture} />
+                            <div className="min-w-0">
+                              <Link to={`/player/${entry.user_id}`}
+                                className="font-semibold text-[#1B3C35] hover:text-[#C96A52] transition-colors truncate block"
+                                onClick={e => e.stopPropagation()} data-testid={`player-link-${entry.user_id}`}>
+                                {entry.player_name}
+                              </Link>
+                              {/* Round scores inline on desktop */}
+                              {sortedRounds.length > 1 && (
+                                <div className="hidden sm:flex gap-2 mt-0.5">
+                                  {sortedRounds.map(r => (
+                                    <span key={r.round_number} className="text-[10px] text-[#6B6E66] tabular-nums">
+                                      R{r.round_number}: {r.strokes}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            {isExpanded ? <ChevronUp className="h-4 w-4 text-[#6B6E66] shrink-0 ml-auto" /> :
+                              <ChevronDown className="h-4 w-4 text-[#6B6E66] shrink-0 ml-auto" />}
+                          </div>
+
+                          {/* Score */}
+                          <span className={`text-center tabular-nums text-lg ${isStableford ? 'font-bold text-[#1B3C35]' : scoreColor(entry.total_to_par)}`}>
+                            {isStableford ? entry.stableford_points : formatToPar(entry.total_to_par)}
+                          </span>
+
+                          {/* Total strokes */}
+                          <span className="text-center tabular-nums text-[#6B6E66] hidden sm:block">
                             {entry.total_strokes}
-                          </TableCell>
+                          </span>
+
+                          {/* Thru */}
+                          <span className="text-center text-[#6B6E66] tabular-nums text-sm">
+                            {entry.thru}
+                          </span>
+                        </div>
+
+                        {/* Expanded hole-by-hole detail */}
+                        {isExpanded && (
+                          <div className="bg-[#F4F4F0] border-b border-[#E2E3DD] px-3 py-4 fade-in" data-testid={`expanded-detail-${i}`}>
+                            {sortedRounds.map(round => (
+                              <div key={round.round_number} className="mb-4 last:mb-0">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-xs font-bold text-[#1B3C35] uppercase tracking-wider">
+                                    Round {round.round_number}
+                                  </span>
+                                  <span className={`text-xs font-bold tabular-nums ${scoreColor(round.to_par)}`}>
+                                    {formatToPar(round.to_par)}
+                                  </span>
+                                  <span className="text-xs text-[#6B6E66] tabular-nums">({round.strokes})</span>
+                                </div>
+
+                                {/* Front 9 */}
+                                <div className="overflow-x-auto">
+                                  <div className="flex gap-1 min-w-max mb-1">
+                                    <span className="w-8 text-[9px] text-[#6B6E66] font-bold text-center shrink-0">Hole</span>
+                                    {round.holes?.slice(0, 9).map(h => (
+                                      <span key={h.hole} className="w-8 text-[10px] text-[#6B6E66] font-bold text-center">{h.hole}</span>
+                                    ))}
+                                    <span className="w-8 text-[10px] text-[#1B3C35] font-bold text-center bg-[#E8E9E3] rounded">OUT</span>
+                                  </div>
+                                  <div className="flex gap-1 min-w-max mb-1">
+                                    <span className="w-8 text-[9px] text-[#6B6E66] text-center shrink-0">Par</span>
+                                    {round.holes?.slice(0, 9).map(h => (
+                                      <span key={h.hole} className="w-8 text-[10px] text-[#6B6E66] text-center tabular-nums">{h.par}</span>
+                                    ))}
+                                    <span className="w-8 text-[10px] text-[#6B6E66] font-bold text-center bg-[#E8E9E3] rounded tabular-nums">
+                                      {round.holes?.slice(0, 9).reduce((s, h) => s + h.par, 0)}
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-1 min-w-max">
+                                    <span className="w-8 text-[9px] text-[#6B6E66] text-center shrink-0">Score</span>
+                                    {round.holes?.slice(0, 9).map(h => (
+                                      <span key={h.hole} className="w-8 flex justify-center">
+                                        <HoleIndicator strokes={h.strokes} par={h.par} />
+                                      </span>
+                                    ))}
+                                    <span className="w-8 text-xs font-bold text-[#1B3C35] text-center bg-[#E8E9E3] rounded tabular-nums flex items-center justify-center">
+                                      {round.holes?.slice(0, 9).filter(h => h.strokes > 0).reduce((s, h) => s + h.strokes, 0) || '-'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Back 9 */}
+                                {round.holes?.length > 9 && (
+                                  <div className="overflow-x-auto mt-2">
+                                    <div className="flex gap-1 min-w-max mb-1">
+                                      <span className="w-8 text-[9px] text-[#6B6E66] font-bold text-center shrink-0">Hole</span>
+                                      {round.holes?.slice(9).map(h => (
+                                        <span key={h.hole} className="w-8 text-[10px] text-[#6B6E66] font-bold text-center">{h.hole}</span>
+                                      ))}
+                                      <span className="w-8 text-[10px] text-[#1B3C35] font-bold text-center bg-[#E8E9E3] rounded">IN</span>
+                                    </div>
+                                    <div className="flex gap-1 min-w-max mb-1">
+                                      <span className="w-8 text-[9px] text-[#6B6E66] text-center shrink-0">Par</span>
+                                      {round.holes?.slice(9).map(h => (
+                                        <span key={h.hole} className="w-8 text-[10px] text-[#6B6E66] text-center tabular-nums">{h.par}</span>
+                                      ))}
+                                      <span className="w-8 text-[10px] text-[#6B6E66] font-bold text-center bg-[#E8E9E3] rounded tabular-nums">
+                                        {round.holes?.slice(9).reduce((s, h) => s + h.par, 0)}
+                                      </span>
+                                    </div>
+                                    <div className="flex gap-1 min-w-max">
+                                      <span className="w-8 text-[9px] text-[#6B6E66] text-center shrink-0">Score</span>
+                                      {round.holes?.slice(9).map(h => (
+                                        <span key={h.hole} className="w-8 flex justify-center">
+                                          <HoleIndicator strokes={h.strokes} par={h.par} />
+                                        </span>
+                                      ))}
+                                      <span className="w-8 text-xs font-bold text-[#1B3C35] text-center bg-[#E8E9E3] rounded tabular-nums flex items-center justify-center">
+                                        {round.holes?.slice(9).filter(h => h.strokes > 0).reduce((s, h) => s + h.strokes, 0) || '-'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         )}
-                        <TableCell className="text-center text-[#6B6E66] tabular-nums">
-                          {entry.thru}
-                        </TableCell>
-                        {entry.rounds?.length > 1 && (
-                          entry.rounds.sort((a, b) => a.round_number - b.round_number).map((r, j) => (
-                            <TableCell key={j} className="text-center tabular-nums text-[#6B6E66] hidden md:table-cell">
-                              {r.strokes}
-                            </TableCell>
-                          ))
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </CardContent>
           </Card>

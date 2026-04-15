@@ -534,12 +534,19 @@ async def get_leaderboard(tournament_id: str):
         raise HTTPException(status_code=404, detail="Tournament not found")
 
     scorecards = await db.scorecards.find({"tournament_id": tournament_id}, {"_id": 0}).to_list(1000)
+    # Fetch player pictures
+    user_ids = list(set(sc["user_id"] for sc in scorecards))
+    users = await db.users.find({"user_id": {"$in": user_ids}}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    user_map = {u["user_id"]: u for u in users}
+
     players = {}
     for sc in scorecards:
         uid = sc["user_id"]
         if uid not in players:
+            u = user_map.get(uid, {})
             players[uid] = {
                 "user_id": uid, "player_name": sc["player_name"],
+                "picture": u.get("picture"),
                 "rounds": [], "total_strokes": 0, "total_to_par": 0,
                 "stableford_points": 0, "thru": "0"
             }
@@ -551,7 +558,8 @@ async def get_leaderboard(tournament_id: str):
             "strokes": round_strokes, "to_par": round_strokes - round_par,
             "stableford": sc.get("stableford_points", 0),
             "thru": len(played), "total_holes": len(sc["holes"]),
-            "status": sc["status"]
+            "status": sc["status"],
+            "holes": sc["holes"]
         })
         players[uid]["total_strokes"] += round_strokes
         players[uid]["total_to_par"] += (round_strokes - round_par)
