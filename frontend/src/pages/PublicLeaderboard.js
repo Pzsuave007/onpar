@@ -217,11 +217,10 @@ export default function PublicLeaderboard() {
               ) : (
                 <div>
                   {/* Header */}
-                  <div className="grid grid-cols-[3rem_1fr_4rem_4rem_3rem] sm:grid-cols-[3rem_1fr_5rem_5rem_4rem_repeat(var(--rounds),4rem)] items-center px-3 py-2.5 bg-[#E8E9E3]/50 border-b border-[#E2E3DD] text-xs font-bold text-[#1B3C35] uppercase tracking-wider"
-                    style={{ '--rounds': leaderboard[0]?.rounds?.length > 1 ? leaderboard[0].rounds.length : 0 }}>
+                  <div className="grid grid-cols-[2.5rem_1fr_3.5rem_2.5rem] sm:grid-cols-[3rem_1fr_5rem_5rem_4rem] items-center px-3 py-2.5 bg-[#E8E9E3]/50 border-b border-[#E2E3DD] text-xs font-bold text-[#1B3C35] uppercase tracking-wider">
                     <span className="text-center">Pos</span>
                     <span>Player</span>
-                    <span className="text-center">{isStableford ? 'Pts' : 'To Par'}</span>
+                    <span className="text-center">{isStableford ? 'Pts' : 'Par'}</span>
                     <span className="text-center hidden sm:block">Total</span>
                     <span className="text-center">Thru</span>
                   </div>
@@ -235,7 +234,7 @@ export default function PublicLeaderboard() {
                       <div key={entry.user_id} data-testid={`leaderboard-row-${i}`}>
                         {/* Main row */}
                         <div
-                          className={`grid grid-cols-[3rem_1fr_4rem_4rem_3rem] sm:grid-cols-[3rem_1fr_5rem_5rem_4rem] items-center px-3 py-3 border-b border-[#E2E3DD] cursor-pointer transition-colors ${isExpanded ? 'bg-[#E8E9E3]/40' : 'hover:bg-[#E8E9E3]/20'} ${i === 0 ? 'bg-amber-50/30' : ''}`}
+                          className={`grid grid-cols-[2.5rem_1fr_3.5rem_2.5rem] sm:grid-cols-[3rem_1fr_5rem_5rem_4rem] items-center px-3 py-3 border-b border-[#E2E3DD] cursor-pointer transition-colors ${isExpanded ? 'bg-[#E8E9E3]/40' : 'hover:bg-[#E8E9E3]/20'} ${i === 0 ? 'bg-amber-50/30' : ''}`}
                           onClick={() => toggleExpand(entry.user_id)}
                           data-testid={`player-row-click-${i}`}
                         >
@@ -245,15 +244,14 @@ export default function PublicLeaderboard() {
                           </span>
 
                           {/* Player name + avatar */}
-                          <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
                             <PlayerAvatar name={entry.player_name} picture={entry.picture} />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <Link to={`/player/${entry.user_id}`}
-                                className="font-semibold text-[#1B3C35] hover:text-[#C96A52] transition-colors truncate block"
+                                className="font-semibold text-sm text-[#1B3C35] hover:text-[#C96A52] transition-colors block truncate"
                                 onClick={e => e.stopPropagation()} data-testid={`player-link-${entry.user_id}`}>
                                 {entry.player_name}
                               </Link>
-                              {/* Round scores inline on desktop */}
                               {sortedRounds.length > 1 && (
                                 <div className="hidden sm:flex gap-2 mt-0.5">
                                   {sortedRounds.map(r => (
@@ -264,8 +262,8 @@ export default function PublicLeaderboard() {
                                 </div>
                               )}
                             </div>
-                            {isExpanded ? <ChevronUp className="h-4 w-4 text-[#6B6E66] shrink-0 ml-auto" /> :
-                              <ChevronDown className="h-4 w-4 text-[#6B6E66] shrink-0 ml-auto" />}
+                            {isExpanded ? <ChevronUp className="h-4 w-4 text-[#6B6E66] shrink-0 hidden sm:block" /> :
+                              <ChevronDown className="h-4 w-4 text-[#6B6E66] shrink-0 hidden sm:block" />}
                           </div>
 
                           {/* Score */}
