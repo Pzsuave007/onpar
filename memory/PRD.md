@@ -26,8 +26,6 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 
 ### Phase 3 - Live Scorer (Observer Mode)
 - Admin adds "guest" players by name (no account needed)
-- POST /api/tournaments/{id}/add-player
-- POST /api/scorecards/keeper (admin enters scores for any player)
 - Live Scorer page at /keeper/:tournamentId
 - Player tabs, hole-by-hole compact entry, live mini-standings
 
@@ -44,9 +42,18 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 
 ### Phase 6 - Landing Page (Apr 15, 2026)
 - Redesigned landing page showcasing all features
-- Golf course hero image, game modes section, how it works, features grid
-- Stats section, CTA, footer with navigation
-- Verified: Desktop + Mobile responsive ✅
+- Verified: Desktop + Mobile responsive
+
+### Phase 7 - Privacy System (Apr 15, 2026)
+- All tournaments, challenges, and tours are PRIVATE by default
+- Visibility field: "private" or "public" on creation
+- Private items only visible to participants, creators, and admins
+- Public items visible to everyone (including anonymous users)
+- Invite codes (6-char uppercase) auto-generated for all items
+- Invite code URLs for sharing: /tournaments/join/:code, /challenges/join/:code, /tours/join/:code
+- Leaderboard access control: 403 for private tournament when not participant
+- Frontend: Lock/Globe badges, invite code copy buttons, visibility dropdowns in all create forms
+- TESTED: 100% backend + frontend (iteration_4.json)
 
 ## Admin Credentials
 - Email: admin@fairway.com / Password: FairwayAdmin123!
@@ -54,17 +61,20 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 
 ## Key DB Schemas
 - `users`: {email, name, role, auth_type, password_hash}
-- `tournaments`: {name, course_name, scoring_format, num_rounds, max_players}
+- `tournaments`: {name, course_name, scoring_format, num_rounds, max_players, visibility, invite_code, created_by}
 - `scorecards`: {tournament_id, user_id, round_number, holes, total_strokes, to_par}
 - `golf_courses`: {course_name, num_holes, tees: [{name, color, total_par, total_yardage, holes}]}
-- `challenges`: {name, course_ids, participants, created_by}
-- `tours`: {name, num_rounds, scoring_format, invite_code, status}
+- `challenges`: {name, course_ids, participants, created_by, visibility, invite_code}
+- `tours`: {name, num_rounds, scoring_format, invite_code, status, visibility, created_by}
 
 ## Key API Endpoints
 - POST /api/courses/scan - AI scorecard scanner
 - POST /api/scorecards/keeper - Live scorer score entry
-- GET /api/leaderboard/{tournament_id} - Public leaderboard
+- GET /api/leaderboard/{tournament_id} - Leaderboard (access-controlled)
 - POST /api/tours - Create virtual tour
+- GET /api/tournaments/invite/{code} - Look up tournament by invite code
+- GET /api/challenges/invite/{code} - Look up challenge by invite code
+- GET /api/tours/invite/{code} - Look up tour by invite code
 
 ## Prioritized Backlog
 ### P0
