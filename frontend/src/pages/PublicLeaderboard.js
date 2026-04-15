@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { API } from '@/contexts/AuthContext';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useAuth, API } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, MapPin, Calendar, Users, ChevronDown, ChevronUp, User } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Trophy, MapPin, Calendar, Users, ChevronDown, ChevronUp, User, Lock } from 'lucide-react';
+import { toast } from 'sonner';
 
 function formatToPar(score) {
   if (score === 0) return 'E';
@@ -68,19 +69,44 @@ function PlayerAvatar({ name, picture }) {
 }
 
 export default function PublicLeaderboard() {
-  const { tournamentId } = useParams();
+  const { tournamentId, inviteCode } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [tournaments, setTournaments] = useState([]);
   const [selectedId, setSelectedId] = useState(tournamentId || '');
   const [leaderboardData, setLeaderboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedPlayer, setExpandedPlayer] = useState(null);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [inviteTournament, setInviteTournament] = useState(null);
+
+  // Handle invite code lookup
+  useEffect(() => {
+    if (!inviteCode) return;
+    axios.get(`${API}/tournaments/invite/${inviteCode}`).then(res => {
+      setInviteTournament(res.data);
+      setSelectedId(res.data.tournament_id);
+      // Auto-register if logged in
+      if (user) {
+        axios.post(`${API}/tournaments/${res.data.tournament_id}/register`).then(() => {
+          toast.success('Joined tournament!');
+          navigate(`/leaderboard/${res.data.tournament_id}`, { replace: true });
+        }).catch(() => {
+          // Already registered or other issue - just navigate
+          navigate(`/leaderboard/${res.data.tournament_id}`, { replace: true });
+        });
+      }
+    }).catch(() => {
+      toast.error('Invalid invite code');
+      setLoading(false);
+    });
+  }, [inviteCode, user, navigate]);
 
   useEffect(() => {
     axios.get(`${API}/tournaments`).then(res => {
       const active = res.data.filter(t => t.status === 'active' || t.status === 'completed');
       setTournaments(active);
-      if (!selectedId && active.length > 0) {
+      if (!selectedId && !inviteCode && active.length > 0) {
         setSelectedId(active[0].tournament_id);
       }
       setLoading(false);
@@ -92,9 +118,13 @@ export default function PublicLeaderboard() {
     if (!selectedId) return;
     setLoading(true);
     setExpandedPlayer(null);
+    setAccessDenied(false);
     axios.get(`${API}/leaderboard/${selectedId}`).then(res => {
       setLeaderboardData(res.data);
-    }).catch(() => {
+    }).catch((err) => {
+      if (err.response?.status === 403) {
+        setAccessDenied(true);
+      }
       setLeaderboardData(null);
     }).finally(() => setLoading(false));
   }, [selectedId]);
@@ -141,6 +171,21 @@ export default function PublicLeaderboard() {
         <div className="flex justify-center py-20">
           <div className="animate-pulse text-[#1B3C35]">Loading leaderboard...</div>
         </div>
+      ) : accessDenied ? (
+        <Card className="border-[#E2E3DD] shadow-none">
+          <CardContent className="py-16 text-center">
+            <Lock className="h-12 w-12 text-[#D6D7D2] mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-[#1B3C35] mb-2" style={{ fontFamily: 'Outfit' }}>Private Tournament</h3>
+            <p className="text-sm text-[#6B6E66] mb-4">
+              This tournament is private. You need an invite link to access it.
+            </p>
+            {!user && (
+              <Link to="/login">
+                <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90">Sign In</Button>
+              </Link>
+            )}
+          </CardContent>
+        </Card>
       ) : !tournament ? (
         <Card className="border-[#E2E3DD] shadow-none">
           <CardContent className="py-16 text-center">

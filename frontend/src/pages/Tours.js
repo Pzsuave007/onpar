@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Globe, Users, ChevronRight, Hash, Share2 } from 'lucide-react';
+import { Plus, Globe, Users, ChevronRight, Hash, Share2, Lock, Copy } from 'lucide-react';
 
 export default function Tours() {
   const { user } = useAuth();
@@ -21,6 +21,7 @@ export default function Tours() {
   const [numRounds, setNumRounds] = useState('5');
   const [scoringFormat, setScoringFormat] = useState('stroke');
   const [creating, setCreating] = useState(false);
+  const [visibility, setVisibility] = useState('private');
 
   useEffect(() => {
     axios.get(`${API}/tours`).then(r => setTours(r.data))
@@ -33,11 +34,13 @@ export default function Tours() {
     setCreating(true);
     try {
       await axios.post(`${API}/tours`, {
-        name: name.trim(), num_rounds: parseInt(numRounds), scoring_format: scoringFormat
+        name: name.trim(), num_rounds: parseInt(numRounds), scoring_format: scoringFormat,
+        visibility
       });
       toast.success('Tour created!');
       setShowCreate(false);
       setName('');
+      setVisibility('private');
       const r = await axios.get(`${API}/tours`);
       setTours(r.data);
     } catch (err) {
@@ -107,6 +110,15 @@ export default function Tours() {
                             {tour.status}
                           </Badge>
                           <Badge variant="outline" className="capitalize text-[10px]">{tour.scoring_format}</Badge>
+                          {tour.visibility === 'public' ? (
+                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 text-[10px]">
+                              <Globe className="h-3 w-3 mr-0.5" />Public
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100 text-[10px]">
+                              <Lock className="h-3 w-3 mr-0.5" />Private
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-3 text-sm text-[#6B6E66]">
                           <span className="flex items-center gap-1"><Hash className="h-3.5 w-3.5" />{tour.num_rounds} rounds</span>
@@ -168,6 +180,22 @@ export default function Tours() {
                 <SelectContent>
                   <SelectItem value="stroke">Stroke Play (to par)</SelectItem>
                   <SelectItem value="stableford">Stableford (points)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-[#1B3C35]">Visibility</Label>
+              <Select value={visibility} onValueChange={setVisibility}>
+                <SelectTrigger className="mt-1 border-[#E2E3DD]" data-testid="tour-visibility">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">
+                    <span className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" />Private - Invite only</span>
+                  </SelectItem>
+                  <SelectItem value="public">
+                    <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" />Public - Anyone can see</span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

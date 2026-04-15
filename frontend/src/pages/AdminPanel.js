@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio, Share2, Camera, MapPin, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio, Share2, Camera, MapPin, Loader2, Lock, Globe, Copy } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useRef } from 'react';
 
@@ -27,7 +27,8 @@ const statusConfig = {
 const emptyForm = {
   name: '', course_name: '', start_date: '', end_date: '',
   scoring_format: 'stroke', num_holes: 18,
-  par_per_hole: [...DEFAULT_PAR], max_players: 100, description: ''
+  par_per_hole: [...DEFAULT_PAR], max_players: 100, description: '',
+  visibility: 'private'
 };
 
 export default function AdminPanel() {
@@ -66,7 +67,8 @@ export default function AdminPanel() {
       name: t.name, course_name: t.course_name, start_date: t.start_date,
       end_date: t.end_date, scoring_format: t.scoring_format, num_holes: t.num_holes,
       num_rounds: t.num_rounds || 1,
-      par_per_hole: [...t.par_per_hole], max_players: t.max_players, description: t.description || ''
+      par_per_hole: [...t.par_per_hole], max_players: t.max_players, description: t.description || '',
+      visibility: t.visibility || 'private'
     });
     setShowDialog(true);
   };
@@ -82,7 +84,8 @@ export default function AdminPanel() {
         await axios.put(`${API}/tournaments/${editId}`, {
           name: form.name, course_name: form.course_name, start_date: form.start_date,
           end_date: form.end_date, scoring_format: form.scoring_format,
-          num_rounds: form.num_rounds, max_players: form.max_players, description: form.description
+          num_rounds: form.num_rounds, max_players: form.max_players, description: form.description,
+          visibility: form.visibility
         });
         toast.success('Tournament updated');
       } else {
@@ -267,12 +270,31 @@ export default function AdminPanel() {
                           <h3 className="font-semibold text-[#1B3C35]">{t.name}</h3>
                           <Badge className={statusConfig[t.status]?.class}>{statusConfig[t.status]?.label}</Badge>
                           <Badge variant="outline" className="capitalize text-[10px]">{t.scoring_format}</Badge>
+                          {t.visibility === 'public' ? (
+                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 text-[10px]">
+                              <Globe className="h-3 w-3 mr-0.5" />Public
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100 text-[10px]">
+                              <Lock className="h-3 w-3 mr-0.5" />Private
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-[#6B6E66] mt-1">
                           {t.course_name} &middot; {t.start_date} to {t.end_date} &middot; Par {t.total_par} &middot; {t.num_holes} holes
                           {(t.num_rounds || 1) > 1 ? ` &middot; ${t.num_rounds} rounds` : ''}
                           &middot; <Users className="inline h-3 w-3" /> {t.participant_count || 0} players
                         </p>
+                        {t.visibility !== 'public' && t.invite_code && (
+                          <button className="text-xs text-[#6B6E66] mt-1 flex items-center gap-1 hover:text-[#1B3C35] transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const url = `${window.location.origin}/tournaments/join/${t.invite_code}`;
+                              navigator.clipboard.writeText(url).then(() => toast.success('Invite link copied!'));
+                            }}>
+                            <Copy className="h-3 w-3" />Invite: {t.invite_code}
+                          </button>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {t.status === 'upcoming' && (
@@ -522,6 +544,22 @@ export default function AdminPanel() {
                 <Input type="number" value={form.max_players}
                   onChange={e => setForm({ ...form, max_players: parseInt(e.target.value) || 100 })}
                   className="mt-1 border-[#E2E3DD]" data-testid="form-max-players" />
+              </div>
+              <div>
+                <Label className="text-[#1B3C35]">Visibility</Label>
+                <Select value={form.visibility} onValueChange={v => setForm({ ...form, visibility: v })}>
+                  <SelectTrigger className="mt-1 border-[#E2E3DD]" data-testid="form-visibility">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private">
+                      <span className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" />Private - Invite only</span>
+                    </SelectItem>
+                    <SelectItem value="public">
+                      <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" />Public - Anyone can see</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

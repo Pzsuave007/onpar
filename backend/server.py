@@ -51,6 +51,7 @@ class TournamentCreate(BaseModel):
     par_per_hole: List[int]
     max_players: int = 100
     description: str = ""
+    visibility: str = "private"
 
 class TournamentUpdate(BaseModel):
     name: Optional[str] = None
@@ -62,6 +63,7 @@ class TournamentUpdate(BaseModel):
     num_rounds: Optional[int] = None
     max_players: Optional[int] = None
     description: Optional[str] = None
+    visibility: Optional[str] = None
 
 class HoleScore(BaseModel):
     hole: int
@@ -82,6 +84,7 @@ class KeeperScoreSubmit(BaseModel):
 class ChallengeCreate(BaseModel):
     name: str
     course_ids: List[str]
+    visibility: str = "private"
 
 class ChallengeRoundLog(BaseModel):
     course_id: str
@@ -141,6 +144,12 @@ async def get_admin_user(request: Request) -> dict:
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+async def get_optional_user(request: Request):
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        return None
 
 def user_response(user: dict) -> dict:
     return {
@@ -252,16 +261,28 @@ async def seed_admin():
 
 # --- Tournament Endpoints ---
 @api_router.get("/tournaments")
-async def list_tournaments():
-    tournaments = await db.tournaments.find({}, {"_id": 0}).sort("start_date", -1).to_list(100)
+async def list_tournaments(request: Request):
+    user = await get_optional_user(request)
+    all_tournaments = await db.tournaments.find({}, {"_id": 0}).sort("start_date", -1).to_list(100)
     reg_counts = {}
     async for doc in db.registrations.aggregate([
         {"$group": {"_id": "$tournament_id", "count": {"$sum": 1}}}
     ]):
         reg_counts[doc["_id"]] = doc["count"]
-    for t in tournaments:
+    # Filter: show public + ones user is registered in or created
+    visible = []
+    user_reg_tids = set()
+    if user:
+        regs = await db.registrations.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(500)
+        user_reg_tids = {r["tournament_id"] for r in regs}
+    for t in all_tournaments:
         t["participant_count"] = reg_counts.get(t["tournament_id"], 0)
-    return tournaments
+        is_public = t.get("visibility", "private") == "public"
+        is_mine = user and (t["tournament_id"] in user_reg_tids or t.get("created_by") == user.get("user_id"))
+        is_admin = user and user.get("role") == "admin"
+        if is_public or is_mine or is_admin:
+            visible.append(t)
+    return visible
 
 @api_router.get("/tournaments/{tournament_id}")
 async def get_tournament(tournament_id: str):
@@ -273,11 +294,14 @@ async def get_tournament(tournament_id: str):
 
 @api_router.post("/tournaments")
 async def create_tournament(data: TournamentCreate, request: Request):
-    await get_admin_user(request)
+    admin = await get_admin_user(request)
     tid = f"tourn_{uuid.uuid4().hex[:12]}"
+    invite_code = uuid.uuid4().hex[:6].upper()
     doc = {
         "tournament_id": tid, **data.model_dump(),
         "total_par": sum(data.par_per_hole), "status": "upcoming",
+        "invite_code": invite_code,
+        "created_by": admin["user_id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.tournaments.insert_one(doc)
@@ -304,6 +328,13 @@ async def delete_tournament(tournament_id: str, request: Request):
     await db.scorecards.delete_many({"tournament_id": tournament_id})
     await db.registrations.delete_many({"tournament_id": tournament_id})
     return {"message": "Tournament deleted"}
+
+@api_router.get("/tournaments/invite/{invite_code}")
+async def get_tournament_by_invite(invite_code: str):
+    t = await db.tournaments.find_one({"invite_code": invite_code.upper()}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Invalid invite code")
+    return t
 
 # --- Registration Endpoints ---
 @api_router.post("/tournaments/{tournament_id}/register")
@@ -403,7 +434,7 @@ async def keeper_submit_scorecard(data: KeeperScoreSubmit, request: Request):
         raise HTTPException(status_code=403, detail="Player not registered for this tournament")
     max_rounds = tournament.get("num_rounds", 1)
     if data.round_number < 1 or data.round_number > max_rounds:
-        raise HTTPException(status_code=400, detail=f"Invalid round number")
+        raise HTTPException(status_code=400, detail="Invalid round number")
     player = await db.users.find_one({"user_id": data.user_id}, {"_id": 0})
     player_name = player["name"] if player else reg.get("player_name", "Unknown")
 
@@ -539,12 +570,23 @@ async def get_my_tournament_scorecards(tournament_id: str, request: Request):
     ).sort("round_number", 1).to_list(20)
     return scorecards
 
-# --- Leaderboard (Public) ---
+# --- Leaderboard (Public for public tournaments, auth-required for private) ---
 @api_router.get("/leaderboard/{tournament_id}")
-async def get_leaderboard(tournament_id: str):
+async def get_leaderboard(tournament_id: str, request: Request):
     tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
+    # Access control for private tournaments
+    if tournament.get("visibility", "private") == "private":
+        user = await get_optional_user(request)
+        if not user:
+            raise HTTPException(status_code=403, detail="This tournament is private")
+        is_admin = user.get("role") == "admin"
+        is_registered = await db.registrations.find_one(
+            {"tournament_id": tournament_id, "user_id": user["user_id"]}
+        )
+        if not is_admin and not is_registered:
+            raise HTTPException(status_code=403, detail="This tournament is private")
 
     scorecards = await db.scorecards.find({"tournament_id": tournament_id}, {"_id": 0}).to_list(1000)
     # Fetch player pictures
@@ -941,12 +983,14 @@ async def create_challenge(data: ChallengeCreate, request: Request):
         raise HTTPException(status_code=404, detail="One or more courses not found")
     total_holes = sum(len(c.get("holes", [])) for c in courses)
     cid = f"chal_{uuid.uuid4().hex[:12]}"
+    invite_code = uuid.uuid4().hex[:6].upper()
     doc = {
         "challenge_id": cid, "name": data.name, "type": "birdie_challenge",
         "course_ids": data.course_ids,
         "courses_info": [{"course_id": c["course_id"], "course_name": c["course_name"],
                           "num_holes": len(c.get("holes", [])), "holes": c.get("holes", [])} for c in courses],
         "total_holes": total_holes, "status": "active",
+        "visibility": data.visibility, "invite_code": invite_code,
         "participants": [{"user_id": user["user_id"], "player_name": user["name"], "joined_at": datetime.now(timezone.utc).isoformat()}],
         "winner_id": None, "winner_name": None,
         "created_by": user["user_id"],
@@ -957,15 +1001,25 @@ async def create_challenge(data: ChallengeCreate, request: Request):
 
 @api_router.get("/challenges")
 async def list_challenges(request: Request):
-    challenges = await db.challenges.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    user = await get_optional_user(request)
+    all_challenges = await db.challenges.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
     # Add progress counts
-    for ch in challenges:
+    for ch in all_challenges:
         for p in ch.get("participants", []):
             count = await db.challenge_progress.count_documents(
                 {"challenge_id": ch["challenge_id"], "user_id": p["user_id"]}
             )
             p["completed_holes"] = count
-    return challenges
+    # Filter by visibility
+    visible = []
+    for ch in all_challenges:
+        is_public = ch.get("visibility", "private") == "public"
+        is_participant = user and any(p["user_id"] == user["user_id"] for p in ch.get("participants", []))
+        is_creator = user and ch.get("created_by") == user.get("user_id")
+        is_admin = user and user.get("role") == "admin"
+        if is_public or is_participant or is_creator or is_admin:
+            visible.append(ch)
+    return visible
 
 @api_router.get("/challenges/{challenge_id}")
 async def get_challenge(challenge_id: str):
@@ -988,6 +1042,13 @@ async def get_challenge(challenge_id: str):
     for p in ch.get("participants", []):
         p["completed_holes"] = len(progress_map.get(p["user_id"], []))
         p["birdied_holes"] = progress_map.get(p["user_id"], [])
+    return ch
+
+@api_router.get("/challenges/invite/{invite_code}")
+async def get_challenge_by_invite(invite_code: str):
+    ch = await db.challenges.find_one({"invite_code": invite_code.upper()}, {"_id": 0})
+    if not ch:
+        raise HTTPException(status_code=404, detail="Invalid invite code")
     return ch
 
 @api_router.post("/challenges/{challenge_id}/join")
@@ -1103,6 +1164,7 @@ async def create_tour(request: Request):
         "num_rounds": body.get("num_rounds", 5),
         "scoring_format": body.get("scoring_format", "stroke"),
         "status": "active", "invite_code": invite_code,
+        "visibility": body.get("visibility", "private"),
         "participants": [{"user_id": user["user_id"], "player_name": user["name"],
                           "joined_at": datetime.now(timezone.utc).isoformat()}],
         "created_by": user["user_id"],
@@ -1112,13 +1174,23 @@ async def create_tour(request: Request):
     return await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
 
 @api_router.get("/tours")
-async def list_tours():
-    tours = await db.tours.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
-    for t in tours:
+async def list_tours(request: Request):
+    user = await get_optional_user(request)
+    all_tours = await db.tours.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    for t in all_tours:
         for p in t.get("participants", []):
             p["rounds_played"] = await db.tour_rounds.count_documents(
                 {"tour_id": t["tour_id"], "user_id": p["user_id"]})
-    return tours
+    # Filter by visibility
+    visible = []
+    for t in all_tours:
+        is_public = t.get("visibility", "private") == "public"
+        is_participant = user and any(p["user_id"] == user["user_id"] for p in t.get("participants", []))
+        is_creator = user and t.get("created_by") == user.get("user_id")
+        is_admin = user and user.get("role") == "admin"
+        if is_public or is_participant or is_creator or is_admin:
+            visible.append(t)
+    return visible
 
 @api_router.get("/tours/invite/{invite_code}")
 async def get_tour_by_invite(invite_code: str):
@@ -1218,6 +1290,9 @@ async def startup():
     await db.registrations.create_index("registration_id", unique=True)
     await db.golf_courses.create_index("course_id", unique=True)
     await db.challenges.create_index("challenge_id", unique=True)
+    await db.challenges.create_index("invite_code", sparse=True)
+    await db.tournaments.create_index("invite_code", sparse=True)
+    await db.tours.create_index("invite_code", unique=True)
     await db.challenge_progress.create_index([("challenge_id", 1), ("user_id", 1), ("course_id", 1), ("hole_number", 1)], unique=True)
     logger.info("Database indexes created")
 

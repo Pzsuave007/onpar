@@ -47,6 +47,7 @@ function AppRouter() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/leaderboard" element={<PublicLeaderboard />} />
         <Route path="/leaderboard/:tournamentId" element={<PublicLeaderboard />} />
+        <Route path="/tournaments/join/:inviteCode" element={<PublicLeaderboard />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><PlayerDashboard /></ProtectedRoute>} />
         <Route path="/scorecard/:tournamentId" element={<ProtectedRoute><ScorecardEntry /></ProtectedRoute>} />
@@ -54,6 +55,7 @@ function AppRouter() {
         <Route path="/keeper/:tournamentId" element={<ProtectedRoute adminOnly><LiveScorer /></ProtectedRoute>} />
         <Route path="/challenges" element={<Challenges />} />
         <Route path="/challenges/:challengeId" element={<ChallengeDetail />} />
+        <Route path="/challenges/join/:inviteCode" element={<Challenges />} />
         <Route path="/play" element={<ProtectedRoute><PlayRound /></ProtectedRoute>} />
         <Route path="/play/:courseId" element={<ProtectedRoute><PlayRound /></ProtectedRoute>} />
         <Route path="/tours" element={<Tours />} />

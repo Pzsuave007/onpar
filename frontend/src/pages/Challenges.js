@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth, API } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,12 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Target, Trophy, MapPin, Users, ChevronRight } from 'lucide-react';
+import { Plus, Target, Trophy, MapPin, Users, ChevronRight, Lock, Globe, Copy } from 'lucide-react';
 
 export default function Challenges() {
   const { user } = useAuth();
+  const { inviteCode } = useParams();
+  const navigate = useNavigate();
   const [challenges, setChallenges] = useState([]);
   const [courses, setCourses] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -20,6 +23,7 @@ export default function Challenges() {
   const [selectedCourses, setSelectedCourses] = useState([]);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [visibility, setVisibility] = useState('private');
 
   useEffect(() => {
     Promise.all([
@@ -30,6 +34,22 @@ export default function Challenges() {
       setCourses(cRes.data);
     }).catch(() => toast.error('Failed to load')).finally(() => setLoading(false));
   }, []);
+
+  // Handle invite code
+  useEffect(() => {
+    if (!inviteCode) return;
+    axios.get(`${API}/challenges/invite/${inviteCode}`).then(res => {
+      const ch = res.data;
+      if (user) {
+        axios.post(`${API}/challenges/${ch.challenge_id}/join`).then(() => {
+          toast.success('Joined challenge!');
+        }).catch(() => {});
+      }
+      navigate(`/challenges/${ch.challenge_id}`, { replace: true });
+    }).catch(() => {
+      toast.error('Invalid invite code');
+    });
+  }, [inviteCode, user, navigate]);
 
   const toggleCourse = (courseId) => {
     setSelectedCourses(prev =>
@@ -44,11 +64,12 @@ export default function Challenges() {
     }
     setCreating(true);
     try {
-      await axios.post(`${API}/challenges`, { name: name.trim(), course_ids: selectedCourses });
+      await axios.post(`${API}/challenges`, { name: name.trim(), course_ids: selectedCourses, visibility });
       toast.success('Challenge created!');
       setShowCreate(false);
       setName('');
       setSelectedCourses([]);
+      setVisibility('private');
       const res = await axios.get(`${API}/challenges`);
       setChallenges(res.data);
     } catch (err) {
@@ -117,6 +138,15 @@ export default function Challenges() {
                             : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100'}>
                             {ch.winner_name ? `Won by ${ch.winner_name}` : ch.status}
                           </Badge>
+                          {ch.visibility === 'public' ? (
+                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 text-[10px]">
+                              <Globe className="h-3 w-3 mr-0.5" />Public
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100 text-[10px]">
+                              <Lock className="h-3 w-3 mr-0.5" />Private
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-3 text-sm text-[#6B6E66]">
                           <span className="flex items-center gap-1">
@@ -142,6 +172,16 @@ export default function Challenges() {
                                 style={{ width: `${Math.round((leader.completed_holes / ch.total_holes) * 100)}%` }} />
                             </div>
                           </div>
+                        )}
+                        {ch.visibility !== 'public' && ch.invite_code && (
+                          <button className="text-xs text-[#6B6E66] mt-2 flex items-center gap-1 hover:text-[#1B3C35] transition-colors"
+                            onClick={(e) => {
+                              e.preventDefault(); e.stopPropagation();
+                              const url = `${window.location.origin}/challenges/join/${ch.invite_code}`;
+                              navigator.clipboard.writeText(url).then(() => toast.success('Invite link copied!'));
+                            }}>
+                            <Copy className="h-3 w-3" />Invite: {ch.invite_code}
+                          </button>
                         )}
                       </div>
                       <ChevronRight className="h-5 w-5 text-[#6B6E66] shrink-0 mt-1" />
@@ -203,6 +243,22 @@ export default function Challenges() {
                   Total: {courses.filter(c => selectedCourses.includes(c.course_id)).reduce((s, c) => s + c.num_holes, 0)} holes to birdie
                 </p>
               )}
+            </div>
+            <div>
+              <Label className="text-[#1B3C35]">Visibility</Label>
+              <Select value={visibility} onValueChange={setVisibility}>
+                <SelectTrigger className="mt-1 border-[#E2E3DD]" data-testid="challenge-visibility">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">
+                    <span className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" />Private - Invite only</span>
+                  </SelectItem>
+                  <SelectItem value="public">
+                    <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" />Public - Anyone can see</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
