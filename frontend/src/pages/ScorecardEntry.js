@@ -55,9 +55,11 @@ export default function ScorecardEntry() {
   const updateHole = (index, strokes) => {
     const val = parseInt(strokes) || 0;
     if (val < 0 || val > 15) return;
-    const updated = [...holes];
-    updated[index] = { ...updated[index], strokes: val };
-    setHoles(updated);
+    setHoles(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], strokes: val };
+      return updated;
+    });
   };
 
   const saveScorecard = async (forceSubmit = false) => {
@@ -211,12 +213,10 @@ export default function ScorecardEntry() {
               disabled={saving} data-testid="save-progress-btn">
               <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save Progress'}
             </Button>
-            {allFilled && (
-              <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => saveScorecard(true)}
-                disabled={saving} data-testid="submit-scorecard-btn">
-                <Send className="h-4 w-4 mr-1" />{saving ? 'Submitting...' : 'Submit Scorecard'}
-              </Button>
-            )}
+            <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => saveScorecard(true)}
+              disabled={saving || !allFilled} data-testid="submit-scorecard-btn">
+              <Send className="h-4 w-4 mr-1" />{saving ? 'Submitting...' : allFilled ? 'Submit Scorecard' : `Complete All ${holes.length} Holes`}
+            </Button>
           </div>
         </CardContent>
       </Card>
