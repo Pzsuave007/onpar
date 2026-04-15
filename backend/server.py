@@ -754,6 +754,95 @@ async def delete_course(course_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Course not found")
     return {"message": "Course deleted"}
 
+# --- Play Round (Personal Rounds + Auto-Challenge Update) ---
+@api_router.post("/rounds")
+async def save_round(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    course_id = body.get("course_id")
+    holes = body.get("holes", [])
+    round_id = body.get("round_id")
+
+    course = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    played = [h for h in holes if h.get("strokes", 0) > 0]
+    total_strokes = sum(h["strokes"] for h in played)
+    total_par = sum(h["par"] for h in played)
+    total_to_par = total_strokes - total_par
+    completed = len(played)
+    status = "completed" if completed == len(holes) else "in_progress"
+
+    if round_id:
+        await db.rounds.update_one({"round_id": round_id}, {"$set": {
+            "holes": holes, "total_strokes": total_strokes,
+            "total_to_par": total_to_par, "status": status,
+            "completed_holes": completed,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }})
+    else:
+        round_id = f"round_{uuid.uuid4().hex[:12]}"
+        await db.rounds.insert_one({
+            "round_id": round_id, "user_id": user["user_id"],
+            "player_name": user["name"], "course_id": course_id,
+            "course_name": course["course_name"],
+            "holes": holes, "total_strokes": total_strokes,
+            "total_to_par": total_to_par, "status": status,
+            "completed_holes": completed,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        })
+
+    # Auto-update active challenges
+    new_birdies = []
+    if played:
+        active_challenges = await db.challenges.find(
+            {"status": "active", "participants.user_id": user["user_id"],
+             "courses_info.course_id": course_id}, {"_id": 0}
+        ).to_list(50)
+        for ch in active_challenges:
+            for h in played:
+                if h["strokes"] < h["par"]:
+                    existing = await db.challenge_progress.find_one({
+                        "challenge_id": ch["challenge_id"], "user_id": user["user_id"],
+                        "course_id": course_id, "hole_number": h["hole"]
+                    })
+                    if not existing:
+                        await db.challenge_progress.insert_one({
+                            "progress_id": f"prog_{uuid.uuid4().hex[:12]}",
+                            "challenge_id": ch["challenge_id"], "user_id": user["user_id"],
+                            "course_id": course_id, "hole_number": h["hole"],
+                            "par": h["par"], "strokes": h["strokes"],
+                            "completed_at": datetime.now(timezone.utc).isoformat()
+                        })
+                        new_birdies.append({"challenge": ch["name"], "hole": h["hole"]})
+            # Check winner
+            total_done = await db.challenge_progress.count_documents(
+                {"challenge_id": ch["challenge_id"], "user_id": user["user_id"]}
+            )
+            if total_done >= ch["total_holes"] and not ch.get("winner_id"):
+                await db.challenges.update_one(
+                    {"challenge_id": ch["challenge_id"]},
+                    {"$set": {"winner_id": user["user_id"], "winner_name": user["name"], "status": "completed"}}
+                )
+
+    result = await db.rounds.find_one({"round_id": round_id}, {"_id": 0})
+    result["new_challenge_birdies"] = new_birdies
+    return result
+
+@api_router.get("/rounds/my")
+async def get_my_rounds(request: Request):
+    user = await get_current_user(request)
+    return await db.rounds.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+
+@api_router.get("/rounds/course/{course_id}")
+async def get_my_course_rounds(course_id: str, request: Request):
+    user = await get_current_user(request)
+    return await db.rounds.find(
+        {"user_id": user["user_id"], "course_id": course_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+
 # --- Birdie Challenge Endpoints ---
 @api_router.post("/challenges")
 async def create_challenge(data: ChallengeCreate, request: Request):

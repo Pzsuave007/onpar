@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Flag, LayoutDashboard, Shield, LogOut, Menu, X, Target } from 'lucide-react';
+import { Flag, LayoutDashboard, Shield, LogOut, Menu, X, Target, CirclePlay } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Navbar() {
@@ -36,11 +36,18 @@ export default function Navbar() {
               </Button>
             </Link>
             {user && (
-              <Link to="/dashboard" data-testid="nav-dashboard">
-                <Button variant="ghost" className="text-[#1B3C35] hover:bg-[#E8E9E3]">
-                  <LayoutDashboard className="h-4 w-4 mr-1" />Dashboard
-                </Button>
-              </Link>
+              <>
+                <Link to="/play" data-testid="nav-play">
+                  <Button variant="ghost" className="text-[#C96A52] hover:bg-[#C96A52]/10 font-semibold">
+                    <CirclePlay className="h-4 w-4 mr-1" />Play
+                  </Button>
+                </Link>
+                <Link to="/dashboard" data-testid="nav-dashboard">
+                  <Button variant="ghost" className="text-[#1B3C35] hover:bg-[#E8E9E3]">
+                    <LayoutDashboard className="h-4 w-4 mr-1" />Dashboard
+                  </Button>
+                </Link>
+              </>
             )}
             {user?.role === 'admin' && (
               <Link to="/admin" data-testid="nav-admin">
@@ -81,8 +88,12 @@ export default function Navbar() {
             <Link to="/challenges" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
               onClick={() => setMobileOpen(false)} data-testid="nav-mobile-challenges">Challenges</Link>
             {user && (
-              <Link to="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
-                onClick={() => setMobileOpen(false)} data-testid="nav-mobile-dashboard">Dashboard</Link>
+              <>
+                <Link to="/play" className="block px-3 py-2 rounded-lg hover:bg-[#C96A52]/10 text-[#C96A52] font-semibold"
+                  onClick={() => setMobileOpen(false)} data-testid="nav-mobile-play">Play a Round</Link>
+                <Link to="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
+                  onClick={() => setMobileOpen(false)} data-testid="nav-mobile-dashboard">Dashboard</Link>
+              </>
             )}
             {user?.role === 'admin' && (
               <Link to="/admin" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
