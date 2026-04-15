@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, Form, Query
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -12,6 +12,7 @@ import uuid
 import bcrypt
 import jwt
 import httpx
+import requests as sync_requests
 from datetime import datetime, timezone, timedelta
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 from PIL import Image, ImageOps
@@ -26,6 +27,40 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 JWT_SECRET = os.environ.get('JWT_SECRET', uuid.uuid4().hex)
+
+# --- Object Storage ---
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+APP_NAME = "fairway-golf"
+_storage_key = None
+
+def init_storage():
+    global _storage_key
+    if _storage_key:
+        return _storage_key
+    resp = sync_requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    _storage_key = resp.json()["storage_key"]
+    return _storage_key
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = sync_requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+def get_object(path: str):
+    key = init_storage()
+    resp = sync_requests.get(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key}, timeout=60
+    )
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -1265,6 +1300,102 @@ async def submit_tour_round(tour_id: str, request: Request):
     })
     return {"message": "Round submitted", "round_number": existing_count + 1}
 
+# --- Tournament Feed (Photo Feed) ---
+MAX_PHOTO_SIZE = 10 * 1024 * 1024  # 10MB
+
+@api_router.post("/tournaments/{tournament_id}/feed")
+async def upload_feed_photo(tournament_id: str, request: Request, file: UploadFile = File(...), caption: str = Form("")):
+    user = await get_current_user(request)
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    # Check: participant or admin
+    is_admin = user.get("role") == "admin"
+    is_registered = await db.registrations.find_one(
+        {"tournament_id": tournament_id, "user_id": user["user_id"]}
+    )
+    if not is_admin and not is_registered:
+        raise HTTPException(status_code=403, detail="Only participants and admins can post photos")
+    # Read and validate file
+    data = await file.read()
+    if len(data) > MAX_PHOTO_SIZE:
+        raise HTTPException(status_code=400, detail="Photo too large (max 10MB)")
+    content_type = file.content_type or "image/jpeg"
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only images allowed")
+    # Compress/resize for mobile
+    try:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
+        max_dim = 1600
+        if max(img.width, img.height) > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=80)
+        data = buf.getvalue()
+        content_type = "image/jpeg"
+    except Exception:
+        pass  # Use original if processing fails
+    # Upload to storage
+    ext = "jpg"
+    storage_path = f"{APP_NAME}/feed/{tournament_id}/{uuid.uuid4().hex}.{ext}"
+    try:
+        result = put_object(storage_path, data, content_type)
+        stored_path = result.get("path", storage_path)
+    except Exception as e:
+        logger.error(f"Storage upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload photo")
+    # Save to DB
+    photo_id = f"photo_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "photo_id": photo_id,
+        "tournament_id": tournament_id,
+        "user_id": user["user_id"],
+        "player_name": user["name"],
+        "picture": user.get("picture"),
+        "caption": caption.strip()[:280] if caption else "",
+        "storage_path": stored_path,
+        "content_type": content_type,
+        "size": len(data),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.tournament_feed.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/tournaments/{tournament_id}/feed")
+async def get_feed(tournament_id: str, request: Request):
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    # Access control: same as leaderboard
+    if tournament.get("visibility", "private") == "private":
+        user = await get_optional_user(request)
+        if not user:
+            raise HTTPException(status_code=403, detail="This tournament is private")
+        is_admin = user.get("role") == "admin"
+        is_registered = await db.registrations.find_one(
+            {"tournament_id": tournament_id, "user_id": user["user_id"]}
+        )
+        if not is_admin and not is_registered:
+            raise HTTPException(status_code=403, detail="This tournament is private")
+    photos = await db.tournament_feed.find(
+        {"tournament_id": tournament_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return photos
+
+@api_router.get("/feed/photo/{photo_id}")
+async def serve_feed_photo(photo_id: str):
+    record = await db.tournament_feed.find_one({"photo_id": photo_id}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    try:
+        data, ct = get_object(record["storage_path"])
+        return Response(content=data, media_type=record.get("content_type", ct))
+    except Exception as e:
+        logger.error(f"Photo download failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load photo")
+
 # Include router
 app.include_router(api_router)
 
@@ -1294,7 +1425,14 @@ async def startup():
     await db.tournaments.create_index("invite_code", sparse=True)
     await db.tours.create_index("invite_code", unique=True)
     await db.challenge_progress.create_index([("challenge_id", 1), ("user_id", 1), ("course_id", 1), ("hole_number", 1)], unique=True)
+    await db.tournament_feed.create_index([("tournament_id", 1), ("created_at", -1)])
+    await db.tournament_feed.create_index("photo_id", unique=True)
     logger.info("Database indexes created")
+    try:
+        init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
 
 @app.on_event("shutdown")
 async def shutdown():

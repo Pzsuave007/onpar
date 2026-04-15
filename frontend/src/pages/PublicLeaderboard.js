@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trophy, MapPin, Calendar, Users, ChevronDown, ChevronUp, User, Lock } from 'lucide-react';
+import { Trophy, MapPin, Calendar, Users, ChevronDown, ChevronUp, User, Lock, Camera } from 'lucide-react';
 import { toast } from 'sonner';
+import TournamentFeed from '@/components/TournamentFeed';
 
 function formatToPar(score) {
   if (score === 0) return 'E';
@@ -79,6 +80,8 @@ export default function PublicLeaderboard() {
   const [expandedPlayer, setExpandedPlayer] = useState(null);
   const [accessDenied, setAccessDenied] = useState(false);
   const [inviteTournament, setInviteTournament] = useState(null);
+  const [activeTab, setActiveTab] = useState('scores');
+  const [canPost, setCanPost] = useState(false);
 
   // Handle invite code lookup
   useEffect(() => {
@@ -121,6 +124,11 @@ export default function PublicLeaderboard() {
     setAccessDenied(false);
     axios.get(`${API}/leaderboard/${selectedId}`).then(res => {
       setLeaderboardData(res.data);
+      // Check if user can post to feed (participant or admin)
+      if (user) {
+        const isParticipant = res.data.leaderboard?.some(p => p.user_id === user.user_id);
+        setCanPost(isParticipant || user.role === 'admin');
+      }
     }).catch((err) => {
       if (err.response?.status === 403) {
         setAccessDenied(true);
@@ -221,6 +229,28 @@ export default function PublicLeaderboard() {
             </CardContent>
           </Card>
 
+          {/* Tab Switcher */}
+          <div className="flex items-center gap-1 mb-4 bg-[#E8E9E3] rounded-lg p-1 w-fit">
+            <button
+              onClick={() => setActiveTab('scores')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'scores' ? 'bg-white text-[#1B3C35] shadow-sm' : 'text-[#6B6E66] hover:text-[#1B3C35]'
+              }`}
+              data-testid="tab-scores">
+              <Trophy className="h-4 w-4 inline mr-1.5" />Scores
+            </button>
+            <button
+              onClick={() => setActiveTab('feed')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'feed' ? 'bg-white text-[#1B3C35] shadow-sm' : 'text-[#6B6E66] hover:text-[#1B3C35]'
+              }`}
+              data-testid="tab-feed">
+              <Camera className="h-4 w-4 inline mr-1.5" />Live Feed
+            </button>
+          </div>
+
+          {activeTab === 'scores' ? (
+          <>
           {/* Score Legend */}
           <div className="flex flex-wrap items-center gap-4 mb-4 px-1">
             <span className="text-xs text-[#6B6E66] font-bold uppercase tracking-wider">Legend:</span>
@@ -412,6 +442,12 @@ export default function PublicLeaderboard() {
               )}
             </CardContent>
           </Card>
+          </>
+          ) : (
+            <div className="max-w-xl mx-auto">
+              <TournamentFeed tournamentId={selectedId} canPost={canPost} />
+            </div>
+          )}
         </>
       )}
     </div>
