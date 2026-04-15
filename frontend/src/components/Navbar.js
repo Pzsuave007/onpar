@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Flag, LayoutDashboard, Shield, LogOut, Menu, X } from 'lucide-react';
+import { Flag, LayoutDashboard, Shield, LogOut, Menu, X, Target } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Navbar() {
@@ -29,6 +29,11 @@ export default function Navbar() {
           <div className="hidden md:flex items-center gap-1">
             <Link to="/leaderboard" data-testid="nav-leaderboard">
               <Button variant="ghost" className="text-[#1B3C35] hover:bg-[#E8E9E3]">Leaderboard</Button>
+            </Link>
+            <Link to="/challenges" data-testid="nav-challenges">
+              <Button variant="ghost" className="text-[#1B3C35] hover:bg-[#E8E9E3]">
+                <Target className="h-4 w-4 mr-1" />Challenges
+              </Button>
             </Link>
             {user && (
               <Link to="/dashboard" data-testid="nav-dashboard">
@@ -73,6 +78,8 @@ export default function Navbar() {
           <div className="md:hidden pb-4 border-t border-[#E2E3DD] pt-3 space-y-2 fade-in">
             <Link to="/leaderboard" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
               onClick={() => setMobileOpen(false)} data-testid="nav-mobile-leaderboard">Leaderboard</Link>
+            <Link to="/challenges" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
+              onClick={() => setMobileOpen(false)} data-testid="nav-mobile-challenges">Challenges</Link>
             {user && (
               <Link to="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
                 onClick={() => setMobileOpen(false)} data-testid="nav-mobile-dashboard">Dashboard</Link>

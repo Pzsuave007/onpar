@@ -11,6 +11,8 @@ import AdminPanel from '@/pages/AdminPanel';
 import PublicLeaderboard from '@/pages/PublicLeaderboard';
 import PlayerProfile from '@/pages/PlayerProfile';
 import LiveScorer from '@/pages/LiveScorer';
+import Challenges from '@/pages/Challenges';
+import ChallengeDetail from '@/pages/ChallengeDetail';
 import '@/App.css';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -47,6 +49,8 @@ function AppRouter() {
         <Route path="/scorecard/:tournamentId" element={<ProtectedRoute><ScorecardEntry /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
         <Route path="/keeper/:tournamentId" element={<ProtectedRoute adminOnly><LiveScorer /></ProtectedRoute>} />
+        <Route path="/challenges" element={<Challenges />} />
+        <Route path="/challenges/:challengeId" element={<ChallengeDetail />} />
         <Route path="/player/:userId" element={<PlayerProfile />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

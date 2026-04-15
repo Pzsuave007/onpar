@@ -76,6 +76,14 @@ class KeeperScoreSubmit(BaseModel):
     round_number: int = 1
     holes: List[HoleScore]
 
+class ChallengeCreate(BaseModel):
+    name: str
+    course_ids: List[str]
+
+class ChallengeRoundLog(BaseModel):
+    course_id: str
+    holes: List[HoleScore]
+
 # --- Auth Helpers ---
 def create_jwt(user_id: str) -> str:
     return jwt.encode(
@@ -746,6 +754,169 @@ async def delete_course(course_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Course not found")
     return {"message": "Course deleted"}
 
+# --- Birdie Challenge Endpoints ---
+@api_router.post("/challenges")
+async def create_challenge(data: ChallengeCreate, request: Request):
+    user = await get_current_user(request)
+    if not data.course_ids:
+        raise HTTPException(status_code=400, detail="Select at least one course")
+    courses = await db.golf_courses.find(
+        {"course_id": {"$in": data.course_ids}}, {"_id": 0}
+    ).to_list(20)
+    if len(courses) != len(data.course_ids):
+        raise HTTPException(status_code=404, detail="One or more courses not found")
+    total_holes = sum(len(c.get("holes", [])) for c in courses)
+    cid = f"chal_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "challenge_id": cid, "name": data.name, "type": "birdie_challenge",
+        "course_ids": data.course_ids,
+        "courses_info": [{"course_id": c["course_id"], "course_name": c["course_name"],
+                          "num_holes": len(c.get("holes", [])), "holes": c.get("holes", [])} for c in courses],
+        "total_holes": total_holes, "status": "active",
+        "participants": [{"user_id": user["user_id"], "player_name": user["name"], "joined_at": datetime.now(timezone.utc).isoformat()}],
+        "winner_id": None, "winner_name": None,
+        "created_by": user["user_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.challenges.insert_one(doc)
+    return await db.challenges.find_one({"challenge_id": cid}, {"_id": 0})
+
+@api_router.get("/challenges")
+async def list_challenges(request: Request):
+    challenges = await db.challenges.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    # Add progress counts
+    for ch in challenges:
+        for p in ch.get("participants", []):
+            count = await db.challenge_progress.count_documents(
+                {"challenge_id": ch["challenge_id"], "user_id": p["user_id"]}
+            )
+            p["completed_holes"] = count
+    return challenges
+
+@api_router.get("/challenges/{challenge_id}")
+async def get_challenge(challenge_id: str):
+    ch = await db.challenges.find_one({"challenge_id": challenge_id}, {"_id": 0})
+    if not ch:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    progress = await db.challenge_progress.find(
+        {"challenge_id": challenge_id}, {"_id": 0}
+    ).to_list(5000)
+    # Group progress by user
+    progress_map = {}
+    for p in progress:
+        uid = p["user_id"]
+        if uid not in progress_map:
+            progress_map[uid] = []
+        progress_map[uid].append({
+            "course_id": p["course_id"], "hole_number": p["hole_number"],
+            "strokes": p["strokes"], "completed_at": p["completed_at"]
+        })
+    for p in ch.get("participants", []):
+        p["completed_holes"] = len(progress_map.get(p["user_id"], []))
+        p["birdied_holes"] = progress_map.get(p["user_id"], [])
+    return ch
+
+@api_router.post("/challenges/{challenge_id}/join")
+async def join_challenge(challenge_id: str, request: Request):
+    user = await get_current_user(request)
+    ch = await db.challenges.find_one({"challenge_id": challenge_id}, {"_id": 0})
+    if not ch:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    if ch["status"] != "active":
+        raise HTTPException(status_code=400, detail="Challenge is not active")
+    if any(p["user_id"] == user["user_id"] for p in ch.get("participants", [])):
+        raise HTTPException(status_code=400, detail="Already joined")
+    await db.challenges.update_one(
+        {"challenge_id": challenge_id},
+        {"$push": {"participants": {
+            "user_id": user["user_id"], "player_name": user["name"],
+            "joined_at": datetime.now(timezone.utc).isoformat()
+        }}}
+    )
+    return {"message": "Joined challenge"}
+
+@api_router.post("/challenges/{challenge_id}/add-player")
+async def add_player_to_challenge(challenge_id: str, request: Request):
+    await get_admin_user(request)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+    ch = await db.challenges.find_one({"challenge_id": challenge_id}, {"_id": 0})
+    if not ch:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    user_id = f"guest_{uuid.uuid4().hex[:12]}"
+    await db.users.insert_one({
+        "user_id": user_id, "email": f"{user_id}@guest.fairway",
+        "name": name, "role": "player", "handicap": None, "picture": None,
+        "auth_type": "guest", "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    await db.challenges.update_one(
+        {"challenge_id": challenge_id},
+        {"$push": {"participants": {
+            "user_id": user_id, "player_name": name,
+            "joined_at": datetime.now(timezone.utc).isoformat()
+        }}}
+    )
+    return {"user_id": user_id, "name": name}
+
+@api_router.post("/challenges/{challenge_id}/log-round")
+async def log_challenge_round(challenge_id: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    course_id = body.get("course_id")
+    user_id = body.get("user_id", user["user_id"])
+    holes = body.get("holes", [])
+    # Admin can log for others
+    is_admin = user.get("role") == "admin"
+    if user_id != user["user_id"] and not is_admin:
+        raise HTTPException(status_code=403, detail="Only admin can log for others")
+    ch = await db.challenges.find_one({"challenge_id": challenge_id}, {"_id": 0})
+    if not ch or ch["status"] != "active":
+        raise HTTPException(status_code=400, detail="Challenge not active")
+    if not any(p["user_id"] == user_id for p in ch.get("participants", [])):
+        raise HTTPException(status_code=403, detail="Player not in challenge")
+    # Find course info
+    course_info = next((c for c in ch.get("courses_info", []) if c["course_id"] == course_id), None)
+    if not course_info:
+        raise HTTPException(status_code=404, detail="Course not in this challenge")
+    # Process holes - detect birdies
+    new_birdies = []
+    for h in holes:
+        if h.get("strokes", 0) <= 0:
+            continue
+        par = h.get("par", 4)
+        if h["strokes"] < par:  # Birdie or better!
+            existing = await db.challenge_progress.find_one({
+                "challenge_id": challenge_id, "user_id": user_id,
+                "course_id": course_id, "hole_number": h["hole"]
+            })
+            if not existing:
+                await db.challenge_progress.insert_one({
+                    "progress_id": f"prog_{uuid.uuid4().hex[:12]}",
+                    "challenge_id": challenge_id, "user_id": user_id,
+                    "course_id": course_id, "hole_number": h["hole"],
+                    "par": par, "strokes": h["strokes"],
+                    "completed_at": datetime.now(timezone.utc).isoformat()
+                })
+                new_birdies.append(h["hole"])
+    # Check if player won
+    total_completed = await db.challenge_progress.count_documents(
+        {"challenge_id": challenge_id, "user_id": user_id}
+    )
+    won = total_completed >= ch["total_holes"]
+    if won and not ch.get("winner_id"):
+        player_name = next((p["player_name"] for p in ch["participants"] if p["user_id"] == user_id), "Unknown")
+        await db.challenges.update_one(
+            {"challenge_id": challenge_id},
+            {"$set": {"winner_id": user_id, "winner_name": player_name, "status": "completed"}}
+        )
+    return {
+        "new_birdies": new_birdies, "total_birdies_this_round": len(new_birdies),
+        "total_completed": total_completed, "total_needed": ch["total_holes"],
+        "won": won
+    }
+
 # Include router
 app.include_router(api_router)
 
@@ -770,6 +941,8 @@ async def startup():
     await db.registrations.create_index([("tournament_id", 1), ("user_id", 1)], unique=True)
     await db.registrations.create_index("registration_id", unique=True)
     await db.golf_courses.create_index("course_id", unique=True)
+    await db.challenges.create_index("challenge_id", unique=True)
+    await db.challenge_progress.create_index([("challenge_id", 1), ("user_id", 1), ("course_id", 1), ("hole_number", 1)], unique=True)
     logger.info("Database indexes created")
 
 @app.on_event("shutdown")
