@@ -68,6 +68,12 @@ class ScorecardSubmit(BaseModel):
     round_number: int = 1
     holes: List[HoleScore]
 
+class KeeperScoreSubmit(BaseModel):
+    tournament_id: str
+    user_id: str
+    round_number: int = 1
+    holes: List[HoleScore]
+
 # --- Auth Helpers ---
 def create_jwt(user_id: str) -> str:
     return jwt.encode(
@@ -346,6 +352,104 @@ def calc_stableford(strokes: int, par: int) -> int:
     if diff == -2: return 4
     return 5
 
+# --- Live Scorer / Keeper Endpoints ---
+@api_router.post("/tournaments/{tournament_id}/add-player")
+async def add_player_to_tournament(tournament_id: str, request: Request):
+    await get_admin_user(request)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Player name required")
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    user_id = f"guest_{uuid.uuid4().hex[:12]}"
+    await db.users.insert_one({
+        "user_id": user_id, "email": f"{user_id}@guest.fairway",
+        "name": name, "role": "player", "handicap": None, "picture": None,
+        "auth_type": "guest", "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    reg_id = f"reg_{uuid.uuid4().hex[:12]}"
+    await db.registrations.insert_one({
+        "registration_id": reg_id, "tournament_id": tournament_id,
+        "user_id": user_id, "player_name": name,
+        "registered_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"user_id": user_id, "name": name, "registration_id": reg_id}
+
+@api_router.post("/scorecards/keeper")
+async def keeper_submit_scorecard(data: KeeperScoreSubmit, request: Request):
+    await get_admin_user(request)
+    tournament = await db.tournaments.find_one({"tournament_id": data.tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    reg = await db.registrations.find_one(
+        {"tournament_id": data.tournament_id, "user_id": data.user_id}
+    )
+    if not reg:
+        raise HTTPException(status_code=403, detail="Player not registered for this tournament")
+    max_rounds = tournament.get("num_rounds", 1)
+    if data.round_number < 1 or data.round_number > max_rounds:
+        raise HTTPException(status_code=400, detail=f"Invalid round number")
+    player = await db.users.find_one({"user_id": data.user_id}, {"_id": 0})
+    player_name = player["name"] if player else reg.get("player_name", "Unknown")
+
+    existing = await db.scorecards.find_one({
+        "tournament_id": data.tournament_id, "user_id": data.user_id,
+        "round_number": data.round_number
+    }, {"_id": 0})
+
+    holes_data = [h.model_dump() for h in data.holes]
+    played = [h for h in holes_data if h["strokes"] > 0]
+    total_strokes = sum(h["strokes"] for h in played)
+    total_par = sum(h["par"] for h in played)
+    total_to_par = total_strokes - total_par
+    stableford_points = sum(calc_stableford(h["strokes"], h["par"]) for h in played)
+    completed = len(played)
+    status = "submitted" if completed == len(holes_data) else "in_progress"
+
+    if existing:
+        await db.scorecards.update_one(
+            {"scorecard_id": existing["scorecard_id"]},
+            {"$set": {
+                "holes": holes_data, "total_strokes": total_strokes,
+                "total_to_par": total_to_par, "stableford_points": stableford_points,
+                "status": status, "completed_holes": completed,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        return await db.scorecards.find_one({"scorecard_id": existing["scorecard_id"]}, {"_id": 0})
+
+    sc_id = f"sc_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "scorecard_id": sc_id, "tournament_id": data.tournament_id,
+        "user_id": data.user_id, "player_name": player_name,
+        "round_number": data.round_number, "holes": holes_data,
+        "total_strokes": total_strokes, "total_to_par": total_to_par,
+        "stableford_points": stableford_points, "status": status,
+        "completed_holes": completed,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.scorecards.insert_one(doc)
+    return await db.scorecards.find_one({"scorecard_id": sc_id}, {"_id": 0})
+
+@api_router.get("/tournaments/{tournament_id}/roster")
+async def get_tournament_roster(tournament_id: str):
+    regs = await db.registrations.find({"tournament_id": tournament_id}, {"_id": 0}).to_list(1000)
+    user_ids = [r["user_id"] for r in regs]
+    users = await db.users.find({"user_id": {"$in": user_ids}}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    user_map = {u["user_id"]: u for u in users}
+    roster = []
+    for r in regs:
+        u = user_map.get(r["user_id"], {})
+        roster.append({
+            "user_id": r["user_id"], "player_name": r["player_name"],
+            "auth_type": u.get("auth_type", "unknown"),
+            "registered_at": r["registered_at"]
+        })
+    return roster
+
 @api_router.post("/scorecards")
 async def submit_scorecard(data: ScorecardSubmit, request: Request):
     user = await get_current_user(request)
@@ -407,6 +511,11 @@ async def submit_scorecard(data: ScorecardSubmit, request: Request):
 async def get_my_scorecards(request: Request):
     user = await get_current_user(request)
     return await db.scorecards.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+@api_router.get("/scorecards/tournament/{tournament_id}/all")
+async def get_all_tournament_scorecards(tournament_id: str, request: Request):
+    await get_admin_user(request)
+    return await db.scorecards.find({"tournament_id": tournament_id}, {"_id": 0}).to_list(1000)
 
 @api_router.get("/scorecards/tournament/{tournament_id}/my")
 async def get_my_tournament_scorecards(tournament_id: str, request: Request):

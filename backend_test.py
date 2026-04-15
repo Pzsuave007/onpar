@@ -15,6 +15,7 @@ class FairwayAPITester:
         self.multi_round_tournament_id = None
         self.scorecard_id = None
         self.player_user_id = None
+        self.guest_user_id = None
 
     def run_test(self, name, method, endpoint, expected_status, data=None, headers=None, auth_token=None):
         """Run a single API test"""
@@ -629,6 +630,183 @@ class FairwayAPITester:
         )
         return success
 
+    # NEW FEATURE TESTS - Live Scorer / Keeper
+    def test_add_guest_player(self):
+        """Test admin adding guest player to tournament"""
+        if not self.tournament_id:
+            print("❌ No tournament ID available for adding guest player")
+            return False
+            
+        success, response = self.run_test(
+            "Add Guest Player to Tournament",
+            "POST",
+            f"tournaments/{self.tournament_id}/add-player",
+            200,
+            data={"name": "Test Guest Player"},
+            auth_token=self.admin_token
+        )
+        if success:
+            self.guest_user_id = response.get('user_id')
+            print(f"   Guest User ID: {self.guest_user_id}")
+            print(f"   Guest Name: {response.get('name')}")
+            print(f"   Registration ID: {response.get('registration_id')}")
+        return success
+
+    def test_add_guest_player_no_auth(self):
+        """Test adding guest player without admin auth (should fail)"""
+        if not self.tournament_id:
+            print("❌ No tournament ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Add Guest Player Without Admin Auth (should fail)",
+            "POST",
+            f"tournaments/{self.tournament_id}/add-player",
+            401,  # Should return 401 Unauthorized
+            data={"name": "Unauthorized Guest"},
+            auth_token=self.player_token
+        )
+        return success
+
+    def test_add_guest_player_empty_name(self):
+        """Test adding guest player with empty name (should fail)"""
+        if not self.tournament_id:
+            print("❌ No tournament ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Add Guest Player with Empty Name (should fail)",
+            "POST",
+            f"tournaments/{self.tournament_id}/add-player",
+            400,  # Should return 400 Bad Request
+            data={"name": ""},
+            auth_token=self.admin_token
+        )
+        return success
+
+    def test_get_tournament_roster(self):
+        """Test getting tournament roster including guest players"""
+        if not self.tournament_id:
+            print("❌ No tournament ID available for roster")
+            return False
+            
+        success, response = self.run_test(
+            "Get Tournament Roster",
+            "GET",
+            f"tournaments/{self.tournament_id}/roster",
+            200
+        )
+        if success:
+            print(f"   Found {len(response)} players in roster")
+            for player in response:
+                auth_type = player.get('auth_type', 'unknown')
+                print(f"   - {player.get('player_name')} ({auth_type})")
+        return success
+
+    def test_keeper_submit_scorecard(self):
+        """Test admin submitting scorecard via keeper endpoint"""
+        if not self.tournament_id or not hasattr(self, 'guest_user_id'):
+            print("❌ No tournament ID or guest user ID available")
+            return False
+            
+        scorecard_data = {
+            "tournament_id": self.tournament_id,
+            "user_id": self.guest_user_id,
+            "round_number": 1,
+            "holes": [
+                {"hole": 1, "strokes": 4, "par": 4},
+                {"hole": 2, "strokes": 3, "par": 3},
+                {"hole": 3, "strokes": 6, "par": 5},
+                {"hole": 4, "strokes": 5, "par": 4},
+                {"hole": 5, "strokes": 4, "par": 4},
+                {"hole": 6, "strokes": 2, "par": 3},
+                {"hole": 7, "strokes": 4, "par": 4},
+                {"hole": 8, "strokes": 5, "par": 5},
+                {"hole": 9, "strokes": 4, "par": 4},
+                {"hole": 10, "strokes": 4, "par": 4},
+                {"hole": 11, "strokes": 3, "par": 3},
+                {"hole": 12, "strokes": 5, "par": 5},
+                {"hole": 13, "strokes": 4, "par": 4},
+                {"hole": 14, "strokes": 4, "par": 4},
+                {"hole": 15, "strokes": 3, "par": 3},
+                {"hole": 16, "strokes": 4, "par": 4},
+                {"hole": 17, "strokes": 5, "par": 5},
+                {"hole": 18, "strokes": 4, "par": 4}
+            ]
+        }
+        
+        success, response = self.run_test(
+            "Submit Scorecard via Keeper Endpoint",
+            "POST",
+            "scorecards/keeper",
+            200,
+            data=scorecard_data,
+            auth_token=self.admin_token
+        )
+        if success:
+            print(f"   Scorecard ID: {response.get('scorecard_id')}")
+            print(f"   Player: {response.get('player_name')}")
+            print(f"   Total strokes: {response.get('total_strokes')}")
+            print(f"   To par: {response.get('total_to_par')}")
+        return success
+
+    def test_keeper_submit_non_admin(self):
+        """Test keeper endpoint with non-admin user (should fail)"""
+        if not self.tournament_id or not hasattr(self, 'guest_user_id'):
+            print("❌ No tournament ID or guest user ID available")
+            return False
+            
+        scorecard_data = {
+            "tournament_id": self.tournament_id,
+            "user_id": self.guest_user_id,
+            "round_number": 1,
+            "holes": [{"hole": 1, "strokes": 4, "par": 4}]
+        }
+        
+        success, response = self.run_test(
+            "Submit Scorecard via Keeper (Non-Admin, should fail)",
+            "POST",
+            "scorecards/keeper",
+            403,  # Should return 403 Forbidden
+            data=scorecard_data,
+            auth_token=self.player_token
+        )
+        return success
+
+    def test_get_all_tournament_scorecards(self):
+        """Test admin getting all tournament scorecards"""
+        if not self.tournament_id:
+            print("❌ No tournament ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Get All Tournament Scorecards (Admin)",
+            "GET",
+            f"scorecards/tournament/{self.tournament_id}/all",
+            200,
+            auth_token=self.admin_token
+        )
+        if success:
+            print(f"   Found {len(response)} scorecards")
+            for sc in response:
+                print(f"   - {sc.get('player_name')}: Round {sc.get('round_number')}, {sc.get('total_strokes')} strokes")
+        return success
+
+    def test_get_all_tournament_scorecards_non_admin(self):
+        """Test non-admin getting all tournament scorecards (should fail)"""
+        if not self.tournament_id:
+            print("❌ No tournament ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Get All Tournament Scorecards (Non-Admin, should fail)",
+            "GET",
+            f"scorecards/tournament/{self.tournament_id}/all",
+            403,  # Should return 403 Forbidden
+            auth_token=self.player_token
+        )
+        return success
+
 def main():
     print("🏌️ Starting Fairway Golf API Tests")
     print("=" * 50)
@@ -675,6 +853,16 @@ def main():
         # NEW FEATURE: Player Profiles
         ("Player Profile", tester.test_player_profile),
         ("Tournaments with Participant Count", tester.test_tournaments_with_participant_count),
+        
+        # NEW FEATURE: Live Scorer / Keeper
+        ("Add Guest Player", tester.test_add_guest_player),
+        ("Add Guest Player No Auth", tester.test_add_guest_player_no_auth),
+        ("Add Guest Player Empty Name", tester.test_add_guest_player_empty_name),
+        ("Get Tournament Roster", tester.test_get_tournament_roster),
+        ("Keeper Submit Scorecard", tester.test_keeper_submit_scorecard),
+        ("Keeper Submit Non-Admin", tester.test_keeper_submit_non_admin),
+        ("Get All Tournament Scorecards Admin", tester.test_get_all_tournament_scorecards),
+        ("Get All Tournament Scorecards Non-Admin", tester.test_get_all_tournament_scorecards_non_admin),
         
         # Registration management
         ("Tournament Unregistration", tester.test_tournament_unregistration),

@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy } from 'lucide-react';
+import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const DEFAULT_PAR = [4, 3, 5, 4, 4, 3, 4, 5, 4, 4, 3, 5, 4, 4, 3, 4, 5, 4];
 const DEFAULT_PAR_9 = [4, 3, 5, 4, 4, 3, 4, 5, 4];
@@ -194,10 +195,17 @@ export default function AdminPanel() {
                           </Button>
                         )}
                         {t.status === 'active' && (
-                          <Button size="sm" variant="outline" className="border-gray-300 text-gray-600 hover:bg-gray-50"
-                            onClick={() => handleStatus(t.tournament_id, 'completed')} data-testid={`complete-btn-${t.tournament_id}`}>
-                            <CheckCircle className="h-3.5 w-3.5 mr-1" />Complete
-                          </Button>
+                          <>
+                            <Link to={`/keeper/${t.tournament_id}`} data-testid={`live-score-btn-${t.tournament_id}`}>
+                              <Button size="sm" className="bg-[#C96A52] hover:bg-[#C96A52]/90 text-white">
+                                <Radio className="h-3.5 w-3.5 mr-1" />Live Scorer
+                              </Button>
+                            </Link>
+                            <Button size="sm" variant="outline" className="border-gray-300 text-gray-600 hover:bg-gray-50"
+                              onClick={() => handleStatus(t.tournament_id, 'completed')} data-testid={`complete-btn-${t.tournament_id}`}>
+                              <CheckCircle className="h-3.5 w-3.5 mr-1" />Complete
+                            </Button>
+                          </>
                         )}
                         <Button size="sm" variant="outline" className="border-[#E2E3DD]" onClick={() => openEdit(t)}
                           data-testid={`edit-btn-${t.tournament_id}`}>
