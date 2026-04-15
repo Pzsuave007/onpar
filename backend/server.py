@@ -789,6 +789,26 @@ async def delete_course(course_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Course not found")
     return {"message": "Course deleted"}
 
+@api_router.put("/courses/{course_id}")
+async def update_course(course_id: str, request: Request):
+    await get_admin_user(request)
+    body = await request.json()
+    existing = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Course not found")
+    tees = body.get("tees", existing.get("tees", []))
+    for tee in tees:
+        tee["total_par"] = sum(h.get("par", 0) for h in tee.get("holes", []))
+    updates = {
+        "course_name": body.get("course_name", existing["course_name"]),
+        "tees": tees,
+        "total_par": tees[0]["total_par"] if tees else existing.get("total_par", 0),
+        "holes": tees[0]["holes"] if tees else existing.get("holes", []),
+        "num_holes": len(tees[0]["holes"]) if tees and tees[0].get("holes") else existing.get("num_holes", 18),
+    }
+    await db.golf_courses.update_one({"course_id": course_id}, {"$set": updates})
+    return await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+
 # --- Play Round (Personal Rounds + Auto-Challenge Update) ---
 @api_router.post("/rounds")
 async def save_round(request: Request):

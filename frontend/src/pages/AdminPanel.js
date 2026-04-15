@@ -171,8 +171,13 @@ export default function AdminPanel() {
     if (!scannedCourse) return;
     setSaving(true);
     try {
-      await axios.post(`${API}/courses`, scannedCourse);
-      toast.success('Course saved!');
+      if (scannedCourse.course_id) {
+        await axios.put(`${API}/courses/${scannedCourse.course_id}`, scannedCourse);
+        toast.success('Course updated!');
+      } else {
+        await axios.post(`${API}/courses`, scannedCourse);
+        toast.success('Course saved!');
+      }
       setShowCourseDialog(false);
       setScannedCourse(null);
       fetchCourses();
@@ -190,6 +195,19 @@ export default function AdminPanel() {
       toast.success('Course deleted');
       fetchCourses();
     } catch { toast.error('Failed to delete'); }
+  };
+
+  const openEditCourse = (course) => {
+    setScannedCourse({
+      course_id: course.course_id,
+      course_name: course.course_name,
+      num_holes: course.num_holes,
+      tees: course.tees || (course.holes ? [{
+        name: 'Default', color: 'white', holes: course.holes,
+        total_yardage: course.holes.reduce((s, h) => s + (h.yardage || 0), 0)
+      }] : [])
+    });
+    setShowCourseDialog(true);
   };
 
   const applyCourseToForm = (course) => {
@@ -333,15 +351,29 @@ export default function AdminPanel() {
                         <p className="text-sm text-[#6B6E66] mt-1">
                           {c.num_holes} holes &middot; Par {c.total_par}
                         </p>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {c.holes?.map(h => (
-                            <span key={h.hole} className="text-[10px] bg-[#E8E9E3] rounded px-1.5 py-0.5 tabular-nums text-[#1B3C35]">
-                              H{h.hole}:P{h.par}{h.yardage > 0 ? `/${h.yardage}y` : ''}
-                            </span>
-                          ))}
-                        </div>
+                        {c.tees && c.tees.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {c.tees.map((t, i) => (
+                              <span key={i} className="text-[10px] bg-[#E8E9E3] rounded-full px-2 py-0.5 tabular-nums text-[#1B3C35]">
+                                {t.name}: Par {t.total_par} &middot; {t.total_yardage || '?'}y
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {c.holes?.map(h => (
+                              <span key={h.hole} className="text-[10px] bg-[#E8E9E3] rounded px-1.5 py-0.5 tabular-nums text-[#1B3C35]">
+                                H{h.hole}:P{h.par}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-1.5 shrink-0">
+                        <Button size="sm" variant="outline" className="border-[#E2E3DD] text-[#1B3C35]"
+                          onClick={() => openEditCourse(c)} data-testid={`edit-course-btn-${c.course_id}`}>
+                          <Pencil className="h-3.5 w-3.5 mr-1" />Edit
+                        </Button>
                         <Button size="sm" variant="outline" className="border-[#E2E3DD] text-[#1B3C35]"
                           onClick={() => { applyCourseToForm(c); setShowDialog(true); }}
                           data-testid={`use-course-btn-${c.course_id}`}>
@@ -529,8 +561,8 @@ export default function AdminPanel() {
       <Dialog open={showCourseDialog} onOpenChange={setShowCourseDialog}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Outfit' }}>Review Scanned Course</DialogTitle>
-            <DialogDescription>Verify the extracted data. All tees from the scorecard are shown.</DialogDescription>
+            <DialogTitle style={{ fontFamily: 'Outfit' }}>{scannedCourse?.course_id ? 'Edit Course' : 'Review Scanned Course'}</DialogTitle>
+            <DialogDescription>{scannedCourse?.course_id ? 'Edit the course details and pars below.' : 'Verify the extracted data. All tees from the scorecard are shown.'}</DialogDescription>
           </DialogHeader>
           {scannedCourse && (
             <div className="space-y-4 py-2">
@@ -597,7 +629,7 @@ export default function AdminPanel() {
             <Button variant="outline" onClick={() => setShowCourseDialog(false)}>Cancel</Button>
             <Button onClick={saveCourse} disabled={saving} className="bg-[#1B3C35] hover:bg-[#1B3C35]/90"
               data-testid="save-course-btn">
-              {saving ? 'Saving...' : 'Save Course'}
+              {saving ? 'Saving...' : scannedCourse?.course_id ? 'Update Course' : 'Save Course'}
             </Button>
           </DialogFooter>
         </DialogContent>
