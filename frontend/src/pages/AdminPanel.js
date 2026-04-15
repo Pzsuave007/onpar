@@ -562,67 +562,84 @@ export default function AdminPanel() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: 'Outfit' }}>{scannedCourse?.course_id ? 'Edit Course' : 'Review Scanned Course'}</DialogTitle>
-            <DialogDescription>{scannedCourse?.course_id ? 'Edit the course details and pars below.' : 'Verify the extracted data. All tees from the scorecard are shown.'}</DialogDescription>
+            <DialogDescription>{scannedCourse?.course_id ? 'Edit the pars and yardages below.' : 'Verify the data. Use arrows to adjust pars.'}</DialogDescription>
           </DialogHeader>
           {scannedCourse && (
-            <div className="space-y-4 py-2">
+            <div className="space-y-5 py-2">
               <div>
                 <Label className="text-[#1B3C35]">Course Name</Label>
                 <Input value={scannedCourse.course_name}
                   onChange={e => setScannedCourse({ ...scannedCourse, course_name: e.target.value })}
                   className="mt-1 border-[#E2E3DD]" data-testid="scanned-course-name" />
               </div>
-              {/* Show tees */}
-              {(scannedCourse.tees || []).map((tee, tIdx) => (
-                <div key={tIdx} className="border border-[#E2E3DD] rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={`w-4 h-4 rounded-full ${tee.color === 'white' ? 'bg-white border border-gray-300' : tee.color === 'blue' ? 'bg-blue-600' : tee.color === 'red' || tee.color === 'gold' ? 'bg-amber-400' : tee.color === 'black' ? 'bg-gray-900' : 'bg-[#1B3C35]'}`} />
-                    <Input value={tee.name} onChange={e => {
-                      const t = [...scannedCourse.tees]; t[tIdx] = { ...t[tIdx], name: e.target.value };
-                      setScannedCourse({ ...scannedCourse, tees: t });
-                    }} className="h-8 w-32 border-[#E2E3DD] font-bold" />
-                    <span className="text-xs text-[#6B6E66]">
-                      Par {tee.holes?.reduce((s, h) => s + (h.par || 0), 0)} &middot; {tee.total_yardage || '?'}y &middot; {tee.holes?.length} holes
-                    </span>
+              {(scannedCourse.tees || []).map((tee, tIdx) => {
+                const teeColor = tee.color === 'blue' ? 'bg-blue-600' : tee.color === 'white' ? 'bg-white border-2 border-gray-300' : 'bg-red-500';
+                const teeText = tee.color === 'white' ? 'text-gray-900' : 'text-white';
+                const updateHolePar = (hIdx, delta) => {
+                  const t = [...scannedCourse.tees]; const hs = [...t[tIdx].holes];
+                  const newPar = Math.min(6, Math.max(3, (hs[hIdx].par || 4) + delta));
+                  hs[hIdx] = { ...hs[hIdx], par: newPar };
+                  t[tIdx] = { ...t[tIdx], holes: hs };
+                  setScannedCourse({ ...scannedCourse, tees: t });
+                };
+                const updateHoleYardage = (hIdx, val) => {
+                  const t = [...scannedCourse.tees]; const hs = [...t[tIdx].holes];
+                  hs[hIdx] = { ...hs[hIdx], yardage: parseInt(val) || 0 };
+                  t[tIdx] = { ...t[tIdx], holes: hs };
+                  setScannedCourse({ ...scannedCourse, tees: t });
+                };
+                return (
+                  <div key={tIdx} className="border border-[#E2E3DD] rounded-xl overflow-hidden">
+                    {/* Tee Header */}
+                    <div className={`flex items-center gap-3 px-4 py-2.5 ${tee.color === 'blue' ? 'bg-blue-600' : tee.color === 'red' ? 'bg-red-500' : 'bg-gray-100'}`}>
+                      <div className={`w-6 h-6 rounded-full ${teeColor} ${teeText} flex items-center justify-center text-xs font-bold`}>
+                        {tee.name?.[0]}
+                      </div>
+                      <span className={`font-bold text-sm ${tee.color === 'white' ? 'text-gray-900' : 'text-white'}`}>{tee.name} Tees</span>
+                      <span className={`text-xs ${tee.color === 'white' ? 'text-gray-500' : 'text-white/70'}`}>
+                        Par {tee.holes?.reduce((s, h) => s + (h.par || 0), 0)} &middot; {tee.total_yardage || '?'}y
+                      </span>
+                    </div>
+                    {/* Holes Grid */}
+                    <div className="p-3 overflow-x-auto">
+                      <div className="grid gap-1.5" style={{ gridTemplateColumns: `2.5rem repeat(${tee.holes?.length || 0}, 1fr)` }}>
+                        {/* Hole numbers */}
+                        <div className="text-[10px] text-[#6B6E66] font-bold flex items-center">Hole</div>
+                        {tee.holes?.map(h => (
+                          <div key={`n${h.hole}`} className="text-center text-[10px] text-[#6B6E66] font-bold">{h.hole}</div>
+                        ))}
+                        {/* Par with stepper */}
+                        <div className="text-[10px] text-[#6B6E66] font-bold flex items-center">Par</div>
+                        {tee.holes?.map((h, hIdx) => (
+                          <div key={`p${h.hole}`} className="flex flex-col items-center" data-testid={`par-stepper-${tIdx}-${h.hole}`}>
+                            <button onClick={() => updateHolePar(hIdx, 1)}
+                              className="w-full h-5 flex items-center justify-center text-[#1B3C35] hover:bg-[#E8E9E3] rounded-t border border-[#E2E3DD] border-b-0 transition-colors"
+                              data-testid={`par-up-${tIdx}-${h.hole}`}>
+                              <svg width="10" height="6" viewBox="0 0 10 6"><path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
+                            </button>
+                            <div className="w-full h-7 flex items-center justify-center text-sm font-bold text-[#1B3C35] border border-[#E2E3DD] bg-white tabular-nums">
+                              {h.par}
+                            </div>
+                            <button onClick={() => updateHolePar(hIdx, -1)}
+                              className="w-full h-5 flex items-center justify-center text-[#1B3C35] hover:bg-[#E8E9E3] rounded-b border border-[#E2E3DD] border-t-0 transition-colors"
+                              data-testid={`par-down-${tIdx}-${h.hole}`}>
+                              <svg width="10" height="6" viewBox="0 0 10 6"><path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
+                            </button>
+                          </div>
+                        ))}
+                        {/* Yardage */}
+                        <div className="text-[10px] text-[#6B6E66] font-bold flex items-center">Yds</div>
+                        {tee.holes?.map((h, hIdx) => (
+                          <input key={`y${h.hole}`} type="number" min="0" value={h.yardage || 0}
+                            onChange={e => updateHoleYardage(hIdx, e.target.value)}
+                            className="w-full h-7 text-center text-[10px] border border-[#E2E3DD] rounded bg-white tabular-nums focus:ring-1 focus:ring-[#1B3C35] focus:outline-none"
+                            data-testid={`yardage-${tIdx}-${h.hole}`} />
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="overflow-x-auto">
-                    <div className="flex gap-1 min-w-max text-[10px]">
-                      <span className="w-10 text-[#6B6E66] font-bold">Hole</span>
-                      {tee.holes?.map(h => <span key={h.hole} className="w-12 text-center text-[#6B6E66] font-bold">{h.hole}</span>)}
-                    </div>
-                    <div className="flex gap-1 min-w-max text-[10px] mt-0.5">
-                      <span className="w-10 text-[#6B6E66]">Par</span>
-                      {tee.holes?.map((h, hIdx) => (
-                        <input key={hIdx} type="number" min="3" max="6" value={h.par}
-                          onChange={e => {
-                            const t = [...scannedCourse.tees]; const hs = [...t[tIdx].holes];
-                            hs[hIdx] = { ...hs[hIdx], par: parseInt(e.target.value) || 3 };
-                            t[tIdx] = { ...t[tIdx], holes: hs };
-                            setScannedCourse({ ...scannedCourse, tees: t });
-                          }}
-                          className="w-12 h-7 text-center text-xs border border-[#E2E3DD] rounded" />
-                      ))}
-                    </div>
-                    <div className="flex gap-1 min-w-max text-[10px] mt-0.5">
-                      <span className="w-10 text-[#6B6E66]">Yds</span>
-                      {tee.holes?.map((h, hIdx) => (
-                        <input key={hIdx} type="number" min="0" value={h.yardage || 0}
-                          onChange={e => {
-                            const t = [...scannedCourse.tees]; const hs = [...t[tIdx].holes];
-                            hs[hIdx] = { ...hs[hIdx], yardage: parseInt(e.target.value) || 0 };
-                            t[tIdx] = { ...t[tIdx], holes: hs };
-                            setScannedCourse({ ...scannedCourse, tees: t });
-                          }}
-                          className="w-12 h-7 text-center text-xs border border-[#E2E3DD] rounded" />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {/* Fallback for old format */}
-              {(!scannedCourse.tees || scannedCourse.tees.length === 0) && scannedCourse.holes && (
-                <p className="text-sm text-[#6B6E66]">Old format detected. {scannedCourse.holes.length} holes.</p>
-              )}
+                );
+              })}
             </div>
           )}
           <DialogFooter>

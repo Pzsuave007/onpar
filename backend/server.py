@@ -670,8 +670,8 @@ async def get_player_profile(user_id: str):
     return {"player": user_response(user), "stats": stats, "history": history}
 
 # --- Golf Course Endpoints ---
-SCORECARD_SCAN_PROMPT = """Analyze this golf scorecard image and extract ALL tee information.
-Golf scorecards have multiple rows for different tees (e.g., Blue, White, Red/Gold, Black, etc.), each with different yardages and sometimes different pars.
+SCORECARD_SCAN_PROMPT = """Analyze this golf scorecard image and extract tee information.
+Golf scorecards have multiple rows for different tees. Extract ONLY the 3 main tees: Blue, White, and Red (or Gold).
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
 {
@@ -695,14 +695,25 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
         {"hole": 1, "par": 4, "yardage": 370},
         {"hole": 2, "par": 3, "yardage": 155}
       ]
+    },
+    {
+      "name": "Red",
+      "color": "red",
+      "total_yardage": 4800,
+      "holes": [
+        {"hole": 1, "par": 4, "yardage": 310},
+        {"hole": 2, "par": 3, "yardage": 120}
+      ]
     }
   ]
 }
 
-Extract ALL tee colors/rows visible on the scorecard. Common tees: Black, Blue, White, Gold, Red.
-For each tee, extract: name, color (lowercase), total yardage, and per-hole par and yardage.
-If a tee has different par values, include them. If pars are the same across tees, still include them per tee.
-If course name is not visible, use "Unknown Course".
+Rules:
+- Extract exactly 3 tees: Blue (longest), White (middle), Red/Gold (shortest)
+- If the card has Gold tees instead of Red, use "Red" as name and "red" as color
+- For each tee extract per-hole: par and yardage
+- If pars differ between tees, include the correct par for each tee
+- If course name is not visible, use "Unknown Course"
 Return ONLY the JSON, nothing else."""
 
 @api_router.post("/courses/scan")
