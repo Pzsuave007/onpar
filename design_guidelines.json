@@ -1,0 +1,103 @@
+{
+  "theme": "light",
+  "archetype": "1 (Organic & Earthy)",
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "Manrope",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter font-bold",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-semibold",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "labels": "text-xs tracking-[0.2em] uppercase font-bold"
+    }
+  },
+  "colors": {
+    "background": "#F4F4F0",
+    "surface": "#FFFFFF",
+    "primary": "#1B3C35",
+    "primary_foreground": "#FFFFFF",
+    "secondary": "#E8E9E3",
+    "secondary_foreground": "#1B3C35",
+    "accent_under_par": "#C96A52",
+    "accent_over_par": "#1D2D44",
+    "accent_even_par": "#4A5D23",
+    "muted": "#D6D7D2",
+    "muted_foreground": "#6B6E66",
+    "border": "#E2E3DD"
+  },
+  "spacing_and_layout": {
+    "philosophy": "Generous Spacing (p-6, p-8, p-12) for containers, dense control-room grids (gap-4) for leaderboards",
+    "bento_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "container_padding": "p-6 md:p-8"
+  },
+  "surface_strategies": {
+    "headers": "Crystal Glass - backdrop-blur-xl bg-white/70 border-b border-white/40",
+    "cards": "Flat background, 1px subtle border border-border, no shadow",
+    "interactive": "Neumorphic subtle lift on hover: hover:-translate-y-1 hover:shadow-lg transition-transform"
+  },
+  "components": {
+    "tables": "Dense, crisp lines, border-b only, numbers aligned right",
+    "buttons": "Flat, primary green (#1B3C35), crisp text. Hover state explicitly defined",
+    "inputs": "Shadcn standard but with 1px border-border, bg-surface, rounded-md"
+  },
+  "media": {
+    "images": {
+      "hero_background": {
+        "url": "https://images.unsplash.com/photo-1775686318424-9987122d8402?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxnb2xmJTIwY291cnNlJTIwYWVyaWFsJTIwdmlld3xlbnwwfHx8fDE3NzYyMTQyNzR8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Aerial view of a golf course hole with a pond",
+        "usage": "Hero section background, marketing pages"
+      },
+      "golfer_putting": {
+        "url": "https://images.unsplash.com/photo-1622729574718-09c87e14ffdb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwzfHxnb2xmJTIwYmFsbCUyMHB1dHRlcnxlbnwwfHx8fDE3NzYyMTQyODN8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Golfer putting on green",
+        "usage": "Feature block, player dashboard hero"
+      },
+      "golf_club_close": {
+        "url": "https://images.unsplash.com/photo-1690288505715-977d41c653d3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njl8MHwxfHNlYXJjaHwyfHxnb2xmZXIlMjBzd2luZ2luZ3xlbnwwfHx8fDE3NzYyMTQyODN8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Golf club and ball close up",
+        "usage": "Scorecard or tournament entry background"
+      }
+    },
+    "icons_library": "@phosphor-icons/react"
+  },
+  "pages": [
+    {
+      "name": "Public Leaderboard",
+      "layout": "Control Room Grid",
+      "features": [
+        "Real-time standings",
+        "Red/Black/Green scoring indicators",
+        "Player search/filter",
+        "Hole-by-hole expansion"
+      ]
+    },
+    {
+      "name": "Player Dashboard",
+      "layout": "Bento Grid",
+      "features": [
+        "Tournament history",
+        "Score entry form",
+        "Stats summary"
+      ]
+    },
+    {
+      "name": "Admin Panel",
+      "layout": "Control Room Grid",
+      "features": [
+        "Tournament CRUD",
+        "Player management",
+        "Leaderboard overrides"
+      ]
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Use tailwind strictly according to the typography and color scale defined.",
+    "Implement a responsive navigation bar using the Crystal Glass surface strategy.",
+    "Ensure the leaderboard uses accessible colors (Terracotta for under-par, Slate for over-par, Moss for even-par). PGA styling emphasizes these numeric states clearly.",
+    "For Shadcn components, override the Vercel-look by setting border radiuses to match the organic feel (rounded-lg or rounded-xl) and using the specified color palette.",
+    "Install and use @phosphor-icons/react for all iconography.",
+    "Add data-testid attributes to all interactive elements for testing."
+  ]
+}
