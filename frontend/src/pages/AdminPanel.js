@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio } from 'lucide-react';
+import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio, Share2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const DEFAULT_PAR = [4, 3, 5, 4, 4, 3, 4, 5, 4, 4, 3, 5, 4, 4, 3, 4, 5, 4];
@@ -201,6 +201,13 @@ export default function AdminPanel() {
                                 <Radio className="h-3.5 w-3.5 mr-1" />Live Scorer
                               </Button>
                             </Link>
+                            <Button size="sm" variant="outline" className="border-[#1B3C35] text-[#1B3C35] hover:bg-[#E8E9E3]"
+                              onClick={() => {
+                                const url = `${window.location.origin}/leaderboard/${t.tournament_id}`;
+                                navigator.clipboard.writeText(url).then(() => toast.success('Link copied! Share it with your family'));
+                              }} data-testid={`share-btn-${t.tournament_id}`}>
+                              <Share2 className="h-3.5 w-3.5 mr-1" />Share
+                            </Button>
                             <Button size="sm" variant="outline" className="border-gray-300 text-gray-600 hover:bg-gray-50"
                               onClick={() => handleStatus(t.tournament_id, 'completed')} data-testid={`complete-btn-${t.tournament_id}`}>
                               <CheckCircle className="h-3.5 w-3.5 mr-1" />Complete

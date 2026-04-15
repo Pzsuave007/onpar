@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, UserPlus, Save, Trophy, Check } from 'lucide-react';
+import { ArrowLeft, UserPlus, Save, Trophy, Check, Share2 } from 'lucide-react';
 
 function calcStableford(strokes, par) {
   if (strokes === 0) return 0;
@@ -193,6 +193,13 @@ export default function LiveScorer() {
         <Button size="sm" className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => setShowAddPlayer(true)}
           data-testid="add-player-btn">
           <UserPlus className="h-4 w-4 mr-1" />Add Player
+        </Button>
+        <Button size="sm" variant="outline" className="border-[#1B3C35] text-[#1B3C35]"
+          onClick={() => {
+            const url = `${window.location.origin}/leaderboard/${tournamentId}`;
+            navigator.clipboard.writeText(url).then(() => toast.success('Leaderboard link copied!'));
+          }} data-testid="share-leaderboard-btn">
+          <Share2 className="h-4 w-4 mr-1" />Share
         </Button>
       </div>
 
