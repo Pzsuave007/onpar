@@ -7,14 +7,16 @@ Golf sporting app for tournaments with PGA-style leaderboard. Easy tournament ad
 - **Backend**: FastAPI + MongoDB (Motor async driver)
 - **Frontend**: React + Tailwind CSS + Shadcn UI
 - **Auth**: JWT email/password + Emergent Google OAuth
-- **Database**: MongoDB (users, user_sessions, tournaments, scorecards collections)
+- **Database**: MongoDB (users, user_sessions, tournaments, scorecards, registrations)
 
 ## User Personas
 1. **Tournament Admin**: Creates/manages tournaments, controls status, manages players
-2. **Player**: Enters hole-by-hole scores, views stats, participates in tournaments
-3. **Public Viewer**: Views leaderboard without registration
+2. **Player**: Registers for tournaments, enters hole-by-hole scores, views stats
+3. **Public Viewer**: Views leaderboard and player profiles without registration
 
-## Core Requirements
+## What's Been Implemented
+
+### Phase 1 (April 15, 2026)
 - [x] Email/password + Google OAuth authentication
 - [x] Tournament CRUD (admin only)
 - [x] Hole-by-hole scorecard entry (18 holes)
@@ -24,29 +26,28 @@ Golf sporting app for tournaments with PGA-style leaderboard. Easy tournament ad
 - [x] Admin panel with tournament/player management
 - [x] Responsive mobile-friendly design
 
-## What's Been Implemented (April 15, 2026)
-- Full backend with 15+ API endpoints
-- Landing page with hero and features
-- Authentication (JWT + Google OAuth)
-- Admin panel (tournament CRUD, status management, player roles)
-- Player dashboard (stats, active tournaments, recent scores)
-- Scorecard entry (hole-by-hole, front 9 / back 9 layout)
-- Public leaderboard (PGA-style with color-coded scores)
-- Admin seed endpoint
+### Phase 2 (April 15, 2026)
+- [x] Multi-round tournament support (1-4 rounds)
+- [x] Round tabs in scorecard entry
+- [x] Leaderboard aggregation across rounds (R1, R2, R3, R4 columns)
+- [x] Tournament registration/enrollment flow
+- [x] Register/Unregister buttons on dashboard
+- [x] Registration required before scoring
+- [x] Participant count on tournament cards
+- [x] Player profile pages with historical stats
+- [x] Clickable player names on leaderboard → profile
 
 ## Prioritized Backlog
-### P0 (Done)
-- Authentication, Tournament CRUD, Scoring, Leaderboard
 
 ### P1
-- Multi-round tournament support
-- Player handicap integration in Stableford
-- Tournament registration/enrollment flow
-- Player profile page with historical stats
+- Player handicap integration in Stableford scoring
+- Real-time leaderboard updates (WebSocket)
+- Tournament invitation system (email/link)
+- Course database with hole info
 
 ### P2
-- Real-time leaderboard updates (WebSocket)
 - Email notifications for tournament events
 - PDF scorecard export
-- Course database with hole info
 - Mobile PWA support
+- Leaderboard sharing via URL
+- Tournament bracket/matchplay support

@@ -234,13 +234,22 @@ async def seed_admin():
 # --- Tournament Endpoints ---
 @api_router.get("/tournaments")
 async def list_tournaments():
-    return await db.tournaments.find({}, {"_id": 0}).sort("start_date", -1).to_list(100)
+    tournaments = await db.tournaments.find({}, {"_id": 0}).sort("start_date", -1).to_list(100)
+    reg_counts = {}
+    async for doc in db.registrations.aggregate([
+        {"$group": {"_id": "$tournament_id", "count": {"$sum": 1}}}
+    ]):
+        reg_counts[doc["_id"]] = doc["count"]
+    for t in tournaments:
+        t["participant_count"] = reg_counts.get(t["tournament_id"], 0)
+    return tournaments
 
 @api_router.get("/tournaments/{tournament_id}")
 async def get_tournament(tournament_id: str):
     t = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
     if not t:
         raise HTTPException(status_code=404, detail="Tournament not found")
+    t["participant_count"] = await db.registrations.count_documents({"tournament_id": tournament_id})
     return t
 
 @api_router.post("/tournaments")
