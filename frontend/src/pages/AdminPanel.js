@@ -527,10 +527,10 @@ export default function AdminPanel() {
 
       {/* Scanned Course Review Dialog */}
       <Dialog open={showCourseDialog} onOpenChange={setShowCourseDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: 'Outfit' }}>Review Scanned Course</DialogTitle>
-            <DialogDescription>Verify the extracted data and save the course.</DialogDescription>
+            <DialogDescription>Verify the extracted data. All tees from the scorecard are shown.</DialogDescription>
           </DialogHeader>
           {scannedCourse && (
             <div className="space-y-4 py-2">
@@ -540,49 +540,57 @@ export default function AdminPanel() {
                   onChange={e => setScannedCourse({ ...scannedCourse, course_name: e.target.value })}
                   className="mt-1 border-[#E2E3DD]" data-testid="scanned-course-name" />
               </div>
-              <div>
-                <Label className="text-[#1B3C35] mb-2 block">
-                  Holes ({scannedCourse.holes?.length || 0}) &middot; Total Par: {scannedCourse.holes?.reduce((s, h) => s + (h.par || 0), 0)}
-                </Label>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border border-[#E2E3DD] rounded">
-                    <thead>
-                      <tr className="bg-[#E8E9E3]/50 text-xs text-[#1B3C35] uppercase">
-                        <th className="py-2 px-2 text-center font-bold">Hole</th>
-                        <th className="py-2 px-2 text-center font-bold">Par</th>
-                        <th className="py-2 px-2 text-center font-bold">Yards</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {scannedCourse.holes?.map((h, i) => (
-                        <tr key={i} className="border-t border-[#E2E3DD]">
-                          <td className="py-1.5 px-2 text-center text-[#6B6E66] font-bold">{h.hole}</td>
-                          <td className="py-1.5 px-2 text-center">
-                            <Input type="number" min="3" max="6" value={h.par}
-                              onChange={e => {
-                                const updated = [...scannedCourse.holes];
-                                updated[i] = { ...updated[i], par: parseInt(e.target.value) || 3 };
-                                setScannedCourse({ ...scannedCourse, holes: updated });
-                              }}
-                              className="w-16 h-8 text-center border-[#E2E3DD] mx-auto"
-                              data-testid={`scanned-par-${h.hole}`} />
-                          </td>
-                          <td className="py-1.5 px-2 text-center">
-                            <Input type="number" min="0" value={h.yardage || 0}
-                              onChange={e => {
-                                const updated = [...scannedCourse.holes];
-                                updated[i] = { ...updated[i], yardage: parseInt(e.target.value) || 0 };
-                                setScannedCourse({ ...scannedCourse, holes: updated });
-                              }}
-                              className="w-20 h-8 text-center border-[#E2E3DD] mx-auto"
-                              data-testid={`scanned-yardage-${h.hole}`} />
-                          </td>
-                        </tr>
+              {/* Show tees */}
+              {(scannedCourse.tees || []).map((tee, tIdx) => (
+                <div key={tIdx} className="border border-[#E2E3DD] rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`w-4 h-4 rounded-full ${tee.color === 'white' ? 'bg-white border border-gray-300' : tee.color === 'blue' ? 'bg-blue-600' : tee.color === 'red' || tee.color === 'gold' ? 'bg-amber-400' : tee.color === 'black' ? 'bg-gray-900' : 'bg-[#1B3C35]'}`} />
+                    <Input value={tee.name} onChange={e => {
+                      const t = [...scannedCourse.tees]; t[tIdx] = { ...t[tIdx], name: e.target.value };
+                      setScannedCourse({ ...scannedCourse, tees: t });
+                    }} className="h-8 w-32 border-[#E2E3DD] font-bold" />
+                    <span className="text-xs text-[#6B6E66]">
+                      Par {tee.holes?.reduce((s, h) => s + (h.par || 0), 0)} &middot; {tee.total_yardage || '?'}y &middot; {tee.holes?.length} holes
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <div className="flex gap-1 min-w-max text-[10px]">
+                      <span className="w-10 text-[#6B6E66] font-bold">Hole</span>
+                      {tee.holes?.map(h => <span key={h.hole} className="w-12 text-center text-[#6B6E66] font-bold">{h.hole}</span>)}
+                    </div>
+                    <div className="flex gap-1 min-w-max text-[10px] mt-0.5">
+                      <span className="w-10 text-[#6B6E66]">Par</span>
+                      {tee.holes?.map((h, hIdx) => (
+                        <input key={hIdx} type="number" min="3" max="6" value={h.par}
+                          onChange={e => {
+                            const t = [...scannedCourse.tees]; const hs = [...t[tIdx].holes];
+                            hs[hIdx] = { ...hs[hIdx], par: parseInt(e.target.value) || 3 };
+                            t[tIdx] = { ...t[tIdx], holes: hs };
+                            setScannedCourse({ ...scannedCourse, tees: t });
+                          }}
+                          className="w-12 h-7 text-center text-xs border border-[#E2E3DD] rounded" />
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                    <div className="flex gap-1 min-w-max text-[10px] mt-0.5">
+                      <span className="w-10 text-[#6B6E66]">Yds</span>
+                      {tee.holes?.map((h, hIdx) => (
+                        <input key={hIdx} type="number" min="0" value={h.yardage || 0}
+                          onChange={e => {
+                            const t = [...scannedCourse.tees]; const hs = [...t[tIdx].holes];
+                            hs[hIdx] = { ...hs[hIdx], yardage: parseInt(e.target.value) || 0 };
+                            t[tIdx] = { ...t[tIdx], holes: hs };
+                            setScannedCourse({ ...scannedCourse, tees: t });
+                          }}
+                          className="w-12 h-7 text-center text-xs border border-[#E2E3DD] rounded" />
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
+              {/* Fallback for old format */}
+              {(!scannedCourse.tees || scannedCourse.tees.length === 0) && scannedCourse.holes && (
+                <p className="text-sm text-[#6B6E66]">Old format detected. {scannedCourse.holes.length} holes.</p>
+              )}
             </div>
           )}
           <DialogFooter>

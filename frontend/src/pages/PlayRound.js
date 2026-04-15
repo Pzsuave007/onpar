@@ -6,17 +6,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Flag, MapPin, Trophy, Target } from 'lucide-react';
+import { ArrowLeft, Save, Flag, MapPin, Target } from 'lucide-react';
 
-function calcStableford(strokes, par) {
-  if (strokes === 0) return 0;
-  const diff = strokes - par;
-  if (diff >= 2) return 0;
-  if (diff === 1) return 1;
-  if (diff === 0) return 2;
-  if (diff === -1) return 3;
-  if (diff === -2) return 4;
-  return 5;
+const TEE_COLORS = {
+  black: 'bg-gray-900 text-white',
+  blue: 'bg-blue-600 text-white',
+  white: 'bg-white text-gray-900 border border-gray-300',
+  gold: 'bg-amber-400 text-amber-900',
+  red: 'bg-red-500 text-white',
+  green: 'bg-green-600 text-white',
+  default: 'bg-[#1B3C35] text-white',
+};
+
+function getTeeStyle(color) {
+  return TEE_COLORS[color?.toLowerCase()] || TEE_COLORS.default;
 }
 
 export default function PlayRound() {
@@ -25,6 +28,7 @@ export default function PlayRound() {
   const { user } = useAuth();
   const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
+  const [selectedTee, setSelectedTee] = useState(null);
   const [holes, setHoles] = useState([]);
   const [roundId, setRoundId] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -36,15 +40,15 @@ export default function PlayRound() {
       setCourses(res.data);
       if (courseId) {
         const c = res.data.find(x => x.course_id === courseId);
-        if (c) startRound(c);
+        if (c) setSelectedCourse(c);
       }
     }).catch(() => toast.error('Failed to load courses')).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
 
-  const startRound = (course) => {
-    setSelectedCourse(course);
-    setHoles(course.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, yardage: h.yardage || 0 })));
+  const selectTee = (tee) => {
+    setSelectedTee(tee);
+    setHoles(tee.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, yardage: h.yardage || 0 })));
     setRoundId(null);
     setBirdieAlerts([]);
   };
@@ -63,9 +67,7 @@ export default function PlayRound() {
     setSaving(true);
     try {
       const res = await axios.post(`${API}/rounds`, {
-        course_id: selectedCourse.course_id,
-        round_id: roundId,
-        holes
+        course_id: selectedCourse.course_id, round_id: roundId, holes
       });
       setRoundId(res.data.round_id);
       const newBirdies = res.data.new_challenge_birdies || [];
@@ -77,9 +79,7 @@ export default function PlayRound() {
       } else {
         toast.success(finish ? 'Round complete!' : 'Saved!');
       }
-      if (finish) {
-        navigate('/play');
-      }
+      if (finish) navigate('/play');
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to save');
     } finally {
@@ -95,7 +95,7 @@ export default function PlayRound() {
     );
   }
 
-  // Course selector
+  // Step 1: Course selector
   if (!selectedCourse) {
     return (
       <div className="min-h-screen p-6 md:p-8 max-w-3xl mx-auto fade-in" data-testid="play-round-select">
@@ -119,15 +119,24 @@ export default function PlayRound() {
             {courses.map(c => (
               <Card key={c.course_id}
                 className="border-[#E2E3DD] shadow-none hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
-                onClick={() => startRound(c)} data-testid={`select-course-${c.course_id}`}>
-                <CardContent className="p-5 flex items-center justify-between">
-                  <div>
+                onClick={() => setSelectedCourse(c)} data-testid={`select-course-${c.course_id}`}>
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between mb-2">
                     <h3 className="font-bold text-[#1B3C35] text-lg">{c.course_name}</h3>
-                    <p className="text-sm text-[#6B6E66] mt-0.5">{c.num_holes} holes &middot; Par {c.total_par}</p>
+                    <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 shrink-0" size="sm">
+                      <Flag className="h-4 w-4 mr-1" />Play
+                    </Button>
                   </div>
-                  <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 shrink-0">
-                    <Flag className="h-4 w-4 mr-1" />Play
-                  </Button>
+                  <p className="text-sm text-[#6B6E66]">{c.num_holes} holes</p>
+                  {c.tees && c.tees.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {c.tees.map((t, i) => (
+                        <span key={i} className={`text-xs px-2.5 py-1 rounded-full font-medium ${getTeeStyle(t.color)}`}>
+                          {t.name} &middot; {t.total_yardage || '?'}y &middot; Par {t.total_par}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -137,12 +146,59 @@ export default function PlayRound() {
     );
   }
 
-  // Scorecard entry
+  // Step 2: Tee selector (if course has multiple tees)
+  const tees = selectedCourse.tees || [];
+  if (tees.length > 0 && !selectedTee) {
+    return (
+      <div className="min-h-screen p-6 md:p-8 max-w-3xl mx-auto fade-in" data-testid="play-tee-select">
+        <Button variant="ghost" size="sm" className="mb-4 text-[#6B6E66]"
+          onClick={() => setSelectedCourse(null)} data-testid="back-to-courses">
+          <ArrowLeft className="h-4 w-4 mr-1" /> Change Course
+        </Button>
+        <div className="mb-8">
+          <p className="text-xs tracking-[0.2em] uppercase font-bold text-[#C96A52] mb-1">{selectedCourse.course_name}</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#1B3C35] tracking-tight" style={{ fontFamily: 'Outfit' }}>
+            Select Your Tee
+          </h1>
+          <p className="text-sm text-[#6B6E66] mt-1">Which tees are you playing from?</p>
+        </div>
+        <div className="space-y-3">
+          {tees.map((tee, i) => (
+            <Card key={i}
+              className="border-[#E2E3DD] shadow-none hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
+              onClick={() => selectTee(tee)} data-testid={`select-tee-${tee.color || i}`}>
+              <CardContent className="p-5 flex items-center gap-4">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${getTeeStyle(tee.color)}`}>
+                  <Flag className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-[#1B3C35] text-lg">{tee.name}</h3>
+                  <p className="text-sm text-[#6B6E66]">
+                    {tee.total_yardage ? `${tee.total_yardage} yards` : ''} &middot; Par {tee.total_par}
+                  </p>
+                </div>
+                <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 shrink-0" size="sm">Select</Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // If no tees structure (old course), use flat holes
+  if (!selectedTee && !holes.length && selectedCourse.holes?.length) {
+    const fallbackHoles = selectedCourse.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, yardage: h.yardage || 0 }));
+    setHoles(fallbackHoles);
+    setSelectedTee({ name: 'Default', color: 'white', holes: selectedCourse.holes });
+  }
+
+  // Step 3: Scorecard entry
   const played = holes.filter(h => h.strokes > 0);
   const totalStrokes = played.reduce((s, h) => s + h.strokes, 0);
   const totalPar = played.reduce((s, h) => s + h.par, 0);
   const toPar = totalStrokes - totalPar;
-  const allFilled = holes.every(h => h.strokes > 0);
+  const allFilled = holes.length > 0 && holes.every(h => h.strokes > 0);
   const birdieCount = played.filter(h => h.strokes < h.par).length;
   const formatScore = (s) => s === 0 ? 'E' : s > 0 ? `+${s}` : `${s}`;
   const scoreClr = (s) => s < 0 ? 'text-[#C96A52]' : s > 0 ? 'text-[#1D2D44]' : 'text-[#4A5D23]';
@@ -157,17 +213,22 @@ export default function PlayRound() {
       <div className="mb-5">
         <h3 className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">{label}</h3>
         <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${holeSet.length}, 1fr) 2.5rem` }}>
-          {/* Hole numbers */}
           {holeSet.map(h => (
             <div key={`n${h.hole}`} className="text-center text-[9px] text-[#6B6E66] font-bold">{h.hole}</div>
           ))}
-          <div className="text-center text-[9px] text-[#1B3C35] font-bold bg-[#E8E9E3] rounded">{label === 'Front 9' ? 'OUT' : 'IN'}</div>
-          {/* Par */}
+          <div className="text-center text-[9px] text-[#1B3C35] font-bold bg-[#E8E9E3] rounded">
+            {label === 'Front 9' ? 'OUT' : 'IN'}
+          </div>
           {holeSet.map(h => (
             <div key={`p${h.hole}`} className="text-center text-[9px] text-[#6B6E66]">P{h.par}</div>
           ))}
           <div className="text-center text-[9px] text-[#6B6E66] font-bold bg-[#E8E9E3] rounded">{setPar}</div>
-          {/* Score inputs */}
+          {holeSet.map(h => (
+            <div key={`y${h.hole}`} className="text-center text-[8px] text-[#6B6E66]/60">{h.yardage || ''}</div>
+          ))}
+          <div className="text-center text-[8px] text-[#6B6E66]/60 bg-[#E8E9E3] rounded">
+            {holeSet.reduce((s, h) => s + (h.yardage || 0), 0) || ''}
+          </div>
           {holeSet.map((h, i) => {
             const idx = startIdx + i;
             const diff = h.strokes > 0 ? h.strokes - h.par : null;
@@ -196,11 +257,10 @@ export default function PlayRound() {
   return (
     <div className="min-h-screen p-4 sm:p-6 md:p-8 max-w-4xl mx-auto fade-in" data-testid="play-round">
       <Button variant="ghost" size="sm" className="mb-3 text-[#6B6E66]"
-        onClick={() => { setSelectedCourse(null); setRoundId(null); }} data-testid="back-to-courses">
-        <ArrowLeft className="h-4 w-4 mr-1" /> Change Course
+        onClick={() => { setSelectedTee(null); setHoles([]); setRoundId(null); }} data-testid="back-to-tees">
+        <ArrowLeft className="h-4 w-4 mr-1" /> Change Tee
       </Button>
 
-      {/* Birdie alerts */}
       {birdieAlerts.length > 0 && (
         <div className="mb-4 p-3 bg-[#C96A52]/10 border border-[#C96A52]/20 rounded-lg">
           <div className="flex items-center gap-2 text-[#C96A52] font-bold text-sm">
@@ -225,9 +285,17 @@ export default function PlayRound() {
               <CardTitle className="text-xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
                 {selectedCourse.course_name}
               </CardTitle>
-              <p className="text-sm text-[#6B6E66] mt-0.5">
-                {selectedCourse.num_holes} holes &middot; Par {selectedCourse.total_par}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                {selectedTee && (
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${getTeeStyle(selectedTee.color)}`}>
+                    {selectedTee.name} Tees
+                  </span>
+                )}
+                <span className="text-sm text-[#6B6E66]">
+                  Par {selectedTee?.total_par || selectedCourse.total_par}
+                  {selectedTee?.total_yardage ? ` · ${selectedTee.total_yardage}y` : ''}
+                </span>
+              </div>
             </div>
             {birdieCount > 0 && (
               <Badge className="bg-[#C96A52] text-white text-xs">
@@ -240,7 +308,6 @@ export default function PlayRound() {
           <HoleGrid holeSet={front9} label="Front 9" startIdx={0} />
           {back9.length > 0 && <HoleGrid holeSet={back9} label="Back 9" startIdx={9} />}
 
-          {/* Totals */}
           <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-[#E2E3DD]">
             <div>
               <p className="text-xs text-[#6B6E66] uppercase tracking-wider font-bold">Total</p>
@@ -255,7 +322,6 @@ export default function PlayRound() {
             <div className="text-xs text-[#6B6E66]">{played.length}/{holes.length} holes</div>
           </div>
 
-          {/* Actions */}
           <div className="flex flex-wrap gap-3 mt-5">
             <Button variant="outline" className="border-[#E2E3DD] text-[#1B3C35]" onClick={() => saveRound(false)}
               disabled={saving} data-testid="save-round-btn">

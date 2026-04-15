@@ -670,18 +670,39 @@ async def get_player_profile(user_id: str):
     return {"player": user_response(user), "stats": stats, "history": history}
 
 # --- Golf Course Endpoints ---
-SCORECARD_SCAN_PROMPT = """Analyze this golf scorecard image and extract the course information.
+SCORECARD_SCAN_PROMPT = """Analyze this golf scorecard image and extract ALL tee information.
+Golf scorecards have multiple rows for different tees (e.g., Blue, White, Red/Gold, Black, etc.), each with different yardages and sometimes different pars.
+
 Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
 {
   "course_name": "Name of the golf course",
   "num_holes": 18,
-  "holes": [
-    {"hole": 1, "par": 4, "yardage": 380},
-    {"hole": 2, "par": 3, "yardage": 165}
+  "tees": [
+    {
+      "name": "Blue",
+      "color": "blue",
+      "total_yardage": 6200,
+      "holes": [
+        {"hole": 1, "par": 4, "yardage": 410},
+        {"hole": 2, "par": 3, "yardage": 185}
+      ]
+    },
+    {
+      "name": "White",
+      "color": "white",
+      "total_yardage": 5500,
+      "holes": [
+        {"hole": 1, "par": 4, "yardage": 370},
+        {"hole": 2, "par": 3, "yardage": 155}
+      ]
+    }
   ]
 }
-Extract ALL holes visible on the scorecard. For each hole get: hole number, par value, and yardage/distance.
-If yardage is not visible, use 0. If course name is not visible, use "Unknown Course".
+
+Extract ALL tee colors/rows visible on the scorecard. Common tees: Black, Blue, White, Gold, Red.
+For each tee, extract: name, color (lowercase), total yardage, and per-hole par and yardage.
+If a tee has different par values, include them. If pars are the same across tees, still include them per tee.
+If course name is not visible, use "Unknown Course".
 Return ONLY the JSON, nothing else."""
 
 @api_router.post("/courses/scan")
@@ -723,12 +744,26 @@ async def save_course(request: Request):
     user = await get_admin_user(request)
     body = await request.json()
     course_id = f"course_{uuid.uuid4().hex[:12]}"
+    tees = body.get("tees", [])
+    # Backward compat: if old format with flat "holes", convert to single tee
+    if not tees and body.get("holes"):
+        tees = [{
+            "name": "Default", "color": "white",
+            "holes": body["holes"],
+            "total_yardage": sum(h.get("yardage", 0) for h in body["holes"])
+        }]
+    # Compute total_par per tee
+    for tee in tees:
+        tee["total_par"] = sum(h.get("par", 0) for h in tee.get("holes", []))
+    num_holes = len(tees[0]["holes"]) if tees and tees[0].get("holes") else body.get("num_holes", 18)
     doc = {
         "course_id": course_id,
         "course_name": body.get("course_name", "Unknown Course"),
-        "num_holes": body.get("num_holes", 18),
-        "holes": body.get("holes", []),
-        "total_par": sum(h.get("par", 0) for h in body.get("holes", [])),
+        "num_holes": num_holes,
+        "tees": tees,
+        "total_par": tees[0]["total_par"] if tees else 0,
+        # Keep flat "holes" from first tee for backward compat
+        "holes": tees[0]["holes"] if tees else [],
         "created_by": user["user_id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
