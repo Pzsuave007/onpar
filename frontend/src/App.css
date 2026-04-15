@@ -1,34 +1,49 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Golf scoring colors */
+.score-under-par { color: #C96A52; }
+.score-over-par { color: #1D2D44; }
+.score-even-par { color: #4A5D23; }
+
+/* Crystal glass effect */
+.glass-nav {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0.75);
+    border-bottom: 1px solid rgba(226, 227, 221, 0.6);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+/* Scorecard grid styling */
+.scorecard-input {
+    width: 3rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.scorecard-input:focus {
+    outline: 2px solid #1B3C35;
+    outline-offset: -1px;
 }
 
-.App-link {
-    color: #61dafb;
+/* Leaderboard table */
+.leaderboard-row:nth-child(even) {
+    background-color: rgba(232, 233, 227, 0.3);
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+/* Hero overlay */
+.hero-overlay {
+    background: linear-gradient(135deg, rgba(27, 60, 53, 0.88) 0%, rgba(27, 60, 53, 0.6) 100%);
+}
+
+/* Smooth animations */
+.fade-in {
+    animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Number tabular alignment */
+.tabular-nums {
+    font-variant-numeric: tabular-nums;
 }

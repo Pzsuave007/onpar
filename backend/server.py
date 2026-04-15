@@ -1,72 +1,443 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel
+from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
-
+import bcrypt
+import jwt
+import httpx
+from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
+JWT_SECRET = os.environ.get('JWT_SECRET', uuid.uuid4().hex)
 
-# Create a router with the /api prefix
+app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
+# --- Pydantic Models ---
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class TournamentCreate(BaseModel):
+    name: str
+    course_name: str
+    start_date: str
+    end_date: str
+    scoring_format: str
+    num_holes: int = 18
+    par_per_hole: List[int]
+    max_players: int = 100
+    description: str = ""
 
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
+class TournamentUpdate(BaseModel):
+    name: Optional[str] = None
+    course_name: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    scoring_format: Optional[str] = None
+    status: Optional[str] = None
+    max_players: Optional[int] = None
+    description: Optional[str] = None
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
+class HoleScore(BaseModel):
+    hole: int
+    strokes: int
+    par: int
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+class ScorecardSubmit(BaseModel):
+    tournament_id: str
+    round_number: int = 1
+    holes: List[HoleScore]
 
-# Include the router in the main app
+# --- Auth Helpers ---
+def create_jwt(user_id: str) -> str:
+    return jwt.encode(
+        {"user_id": user_id, "exp": datetime.now(timezone.utc) + timedelta(days=7)},
+        JWT_SECRET, algorithm="HS256"
+    )
+
+async def get_current_user(request: Request) -> dict:
+    # Check cookie first
+    session_token = request.cookies.get("session_token")
+    if session_token:
+        session = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0})
+        if session:
+            expires_at = session["expires_at"]
+            if isinstance(expires_at, str):
+                expires_at = datetime.fromisoformat(expires_at)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at > datetime.now(timezone.utc):
+                user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+                if user:
+                    return user
+
+    # Check Authorization header
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+            user = await db.users.find_one({"user_id": payload["user_id"]}, {"_id": 0})
+            if user:
+                return user
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            pass
+        # Try as session token
+        session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+        if session:
+            expires_at = session["expires_at"]
+            if isinstance(expires_at, str):
+                expires_at = datetime.fromisoformat(expires_at)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at > datetime.now(timezone.utc):
+                user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+                if user:
+                    return user
+
+    raise HTTPException(status_code=401, detail="Not authenticated")
+
+async def get_admin_user(request: Request) -> dict:
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+def user_response(user: dict) -> dict:
+    return {
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "name": user["name"],
+        "role": user.get("role", "player"),
+        "handicap": user.get("handicap"),
+        "picture": user.get("picture"),
+    }
+
+# --- Auth Endpoints ---
+@api_router.post("/auth/register")
+async def register(req: RegisterRequest):
+    existing = await db.users.find_one({"email": req.email}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    password_hash = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
+    user_doc = {
+        "user_id": user_id, "email": req.email, "name": req.name,
+        "password_hash": password_hash, "role": "player",
+        "handicap": None, "picture": None, "auth_type": "email",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(user_doc)
+    token = create_jwt(user_id)
+    return {"token": token, "user": user_response(user_doc)}
+
+@api_router.post("/auth/login")
+async def login(req: LoginRequest):
+    user = await db.users.find_one({"email": req.email}, {"_id": 0})
+    if not user or not user.get("password_hash"):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not bcrypt.checkpw(req.password.encode(), user["password_hash"].encode()):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_jwt(user["user_id"])
+    return {"token": token, "user": user_response(user)}
+
+@api_router.get("/auth/session")
+async def exchange_session(request: Request, response: Response):
+    session_id = request.headers.get("X-Session-ID")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Session ID required")
+    async with httpx.AsyncClient() as http_client:
+        resp = await http_client.get(
+            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+            headers={"X-Session-ID": session_id}
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        data = resp.json()
+
+    existing = await db.users.find_one({"email": data["email"]}, {"_id": 0})
+    if existing:
+        user_id = existing["user_id"]
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"name": data["name"], "picture": data.get("picture")}}
+        )
+    else:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        await db.users.insert_one({
+            "user_id": user_id, "email": data["email"], "name": data["name"],
+            "role": "player", "handicap": None, "picture": data.get("picture"),
+            "auth_type": "google", "created_at": datetime.now(timezone.utc).isoformat()
+        })
+
+    session_token = data.get("session_token", f"sess_{uuid.uuid4().hex}")
+    await db.user_sessions.insert_one({
+        "user_id": user_id, "session_token": session_token,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    response.set_cookie(
+        key="session_token", value=session_token,
+        httponly=True, secure=True, samesite="none", path="/", max_age=7*24*60*60
+    )
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return user_response(user)
+
+@api_router.get("/auth/me")
+async def get_me(request: Request):
+    user = await get_current_user(request)
+    return user_response(user)
+
+@api_router.post("/auth/logout")
+async def logout(request: Request, response: Response):
+    session_token = request.cookies.get("session_token")
+    if session_token:
+        await db.user_sessions.delete_one({"session_token": session_token})
+    response.delete_cookie("session_token", path="/", secure=True, samesite="none")
+    return {"message": "Logged out"}
+
+# --- Admin Seed ---
+@api_router.post("/admin/seed")
+async def seed_admin():
+    existing = await db.users.find_one({"role": "admin"}, {"_id": 0})
+    if existing:
+        return {"message": "Admin already exists", "email": existing["email"]}
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    pw = bcrypt.hashpw("FairwayAdmin123!".encode(), bcrypt.gensalt()).decode()
+    await db.users.insert_one({
+        "user_id": user_id, "email": "admin@fairway.com", "name": "Tournament Admin",
+        "password_hash": pw, "role": "admin", "handicap": None, "picture": None,
+        "auth_type": "email", "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"message": "Admin created", "email": "admin@fairway.com"}
+
+# --- Tournament Endpoints ---
+@api_router.get("/tournaments")
+async def list_tournaments():
+    return await db.tournaments.find({}, {"_id": 0}).sort("start_date", -1).to_list(100)
+
+@api_router.get("/tournaments/{tournament_id}")
+async def get_tournament(tournament_id: str):
+    t = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    return t
+
+@api_router.post("/tournaments")
+async def create_tournament(data: TournamentCreate, request: Request):
+    await get_admin_user(request)
+    tid = f"tourn_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "tournament_id": tid, **data.model_dump(),
+        "total_par": sum(data.par_per_hole), "status": "upcoming",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.tournaments.insert_one(doc)
+    return await db.tournaments.find_one({"tournament_id": tid}, {"_id": 0})
+
+@api_router.put("/tournaments/{tournament_id}")
+async def update_tournament(tournament_id: str, data: TournamentUpdate, request: Request):
+    await get_admin_user(request)
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    await db.tournaments.update_one({"tournament_id": tournament_id}, {"$set": updates})
+    t = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    return t
+
+@api_router.delete("/tournaments/{tournament_id}")
+async def delete_tournament(tournament_id: str, request: Request):
+    await get_admin_user(request)
+    result = await db.tournaments.delete_one({"tournament_id": tournament_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    await db.scorecards.delete_many({"tournament_id": tournament_id})
+    return {"message": "Tournament deleted"}
+
+# --- Scorecard Endpoints ---
+def calc_stableford(strokes: int, par: int) -> int:
+    diff = strokes - par
+    if diff >= 2: return 0
+    if diff == 1: return 1
+    if diff == 0: return 2
+    if diff == -1: return 3
+    if diff == -2: return 4
+    return 5
+
+@api_router.post("/scorecards")
+async def submit_scorecard(data: ScorecardSubmit, request: Request):
+    user = await get_current_user(request)
+    tournament = await db.tournaments.find_one({"tournament_id": data.tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    existing = await db.scorecards.find_one({
+        "tournament_id": data.tournament_id, "user_id": user["user_id"],
+        "round_number": data.round_number
+    }, {"_id": 0})
+
+    holes_data = [h.model_dump() for h in data.holes]
+    played = [h for h in holes_data if h["strokes"] > 0]
+    total_strokes = sum(h["strokes"] for h in played)
+    total_par = sum(h["par"] for h in played)
+    total_to_par = total_strokes - total_par
+    stableford_points = sum(calc_stableford(h["strokes"], h["par"]) for h in played)
+    completed = len(played)
+    status = "submitted" if completed == len(holes_data) else "in_progress"
+
+    if existing:
+        await db.scorecards.update_one(
+            {"scorecard_id": existing["scorecard_id"]},
+            {"$set": {
+                "holes": holes_data, "total_strokes": total_strokes,
+                "total_to_par": total_to_par, "stableford_points": stableford_points,
+                "status": status, "completed_holes": completed,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        return await db.scorecards.find_one({"scorecard_id": existing["scorecard_id"]}, {"_id": 0})
+
+    sc_id = f"sc_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "scorecard_id": sc_id, "tournament_id": data.tournament_id,
+        "user_id": user["user_id"], "player_name": user["name"],
+        "round_number": data.round_number, "holes": holes_data,
+        "total_strokes": total_strokes, "total_to_par": total_to_par,
+        "stableford_points": stableford_points, "status": status,
+        "completed_holes": completed,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.scorecards.insert_one(doc)
+    return await db.scorecards.find_one({"scorecard_id": sc_id}, {"_id": 0})
+
+@api_router.get("/scorecards/my")
+async def get_my_scorecards(request: Request):
+    user = await get_current_user(request)
+    return await db.scorecards.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+@api_router.get("/scorecards/tournament/{tournament_id}/my")
+async def get_my_tournament_scorecard(tournament_id: str, request: Request):
+    user = await get_current_user(request)
+    sc = await db.scorecards.find_one(
+        {"tournament_id": tournament_id, "user_id": user["user_id"]},
+        {"_id": 0}
+    )
+    return sc or {}
+
+# --- Leaderboard (Public) ---
+@api_router.get("/leaderboard/{tournament_id}")
+async def get_leaderboard(tournament_id: str):
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    scorecards = await db.scorecards.find({"tournament_id": tournament_id}, {"_id": 0}).to_list(1000)
+    players = {}
+    for sc in scorecards:
+        uid = sc["user_id"]
+        if uid not in players:
+            players[uid] = {
+                "user_id": uid, "player_name": sc["player_name"],
+                "rounds": [], "total_strokes": 0, "total_to_par": 0,
+                "stableford_points": 0, "thru": "0"
+            }
+        played = [h for h in sc["holes"] if h["strokes"] > 0]
+        round_strokes = sum(h["strokes"] for h in played)
+        round_par = sum(h["par"] for h in played)
+        players[uid]["rounds"].append({
+            "round_number": sc["round_number"],
+            "strokes": round_strokes, "to_par": round_strokes - round_par,
+            "stableford": sc.get("stableford_points", 0),
+            "thru": len(played), "total_holes": len(sc["holes"]),
+            "status": sc["status"]
+        })
+        players[uid]["total_strokes"] += round_strokes
+        players[uid]["total_to_par"] += (round_strokes - round_par)
+        players[uid]["stableford_points"] += sc.get("stableford_points", 0)
+
+    for uid, data in players.items():
+        latest = max(data["rounds"], key=lambda r: r["round_number"])
+        data["thru"] = "F" if latest["thru"] == latest["total_holes"] else str(latest["thru"])
+
+    leaderboard = list(players.values())
+    if tournament.get("scoring_format") == "stableford":
+        leaderboard.sort(key=lambda x: x["stableford_points"], reverse=True)
+    else:
+        leaderboard.sort(key=lambda x: x["total_to_par"])
+
+    # Handle ties
+    for i, entry in enumerate(leaderboard):
+        if i == 0:
+            entry["position"] = 1
+            entry["tied"] = False
+        else:
+            prev = leaderboard[i - 1]
+            is_stroke = tournament.get("scoring_format") != "stableford"
+            same = (entry["total_to_par"] == prev["total_to_par"]) if is_stroke else (entry["stableford_points"] == prev["stableford_points"])
+            if same:
+                entry["position"] = prev["position"]
+                entry["tied"] = True
+                prev["tied"] = True
+            else:
+                entry["position"] = i + 1
+                entry["tied"] = False
+
+    return {"tournament": tournament, "leaderboard": leaderboard}
+
+# --- Player Management ---
+@api_router.get("/players")
+async def list_players(request: Request):
+    await get_admin_user(request)
+    return await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
+
+@api_router.put("/players/{user_id}/role")
+async def update_role(user_id: str, request: Request):
+    await get_admin_user(request)
+    body = await request.json()
+    role = body.get("role")
+    if role not in ["admin", "player"]:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    result = await db.users.update_one({"user_id": user_id}, {"$set": {"role": role}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": f"Role updated to {role}"}
+
+@api_router.put("/profile")
+async def update_profile(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    updates = {}
+    if "name" in body:
+        updates["name"] = body["name"]
+    if "handicap" in body:
+        updates["handicap"] = body["handicap"]
+    if updates:
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": updates})
+    result = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
+    return result
+
+# Include router
 app.include_router(api_router)
 
 app.add_middleware(
@@ -77,13 +448,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+@app.on_event("startup")
+async def startup():
+    await db.users.create_index("user_id", unique=True)
+    await db.users.create_index("email", unique=True)
+    await db.tournaments.create_index("tournament_id", unique=True)
+    await db.scorecards.create_index("scorecard_id", unique=True)
+    await db.scorecards.create_index([("tournament_id", 1), ("user_id", 1)])
+    logger.info("Database indexes created")
+
 @app.on_event("shutdown")
-async def shutdown_db_client():
+async def shutdown():
     client.close()
