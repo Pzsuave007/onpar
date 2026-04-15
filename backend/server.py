@@ -1061,6 +1061,108 @@ async def log_challenge_round(challenge_id: str, request: Request):
         "won": won
     }
 
+# --- Virtual Tour Endpoints ---
+@api_router.post("/tours")
+async def create_tour(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    tour_id = f"tour_{uuid.uuid4().hex[:12]}"
+    invite_code = uuid.uuid4().hex[:6].upper()
+    doc = {
+        "tour_id": tour_id, "name": body.get("name", ""),
+        "num_rounds": body.get("num_rounds", 5),
+        "scoring_format": body.get("scoring_format", "stroke"),
+        "status": "active", "invite_code": invite_code,
+        "participants": [{"user_id": user["user_id"], "player_name": user["name"],
+                          "joined_at": datetime.now(timezone.utc).isoformat()}],
+        "created_by": user["user_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.tours.insert_one(doc)
+    return await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+
+@api_router.get("/tours")
+async def list_tours():
+    tours = await db.tours.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    for t in tours:
+        for p in t.get("participants", []):
+            p["rounds_played"] = await db.tour_rounds.count_documents(
+                {"tour_id": t["tour_id"], "user_id": p["user_id"]})
+    return tours
+
+@api_router.get("/tours/invite/{invite_code}")
+async def get_tour_by_invite(invite_code: str):
+    tour = await db.tours.find_one({"invite_code": invite_code.upper()}, {"_id": 0})
+    if not tour:
+        raise HTTPException(status_code=404, detail="Invalid invite code")
+    return tour
+
+@api_router.get("/tours/{tour_id}")
+async def get_tour(tour_id: str):
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour:
+        raise HTTPException(status_code=404, detail="Tour not found")
+    rounds = await db.tour_rounds.find({"tour_id": tour_id}, {"_id": 0}).to_list(1000)
+    for p in tour.get("participants", []):
+        p_rounds = sorted([r for r in rounds if r["user_id"] == p["user_id"]], key=lambda x: x["round_number"])
+        p["rounds"] = p_rounds
+        p["total_to_par"] = sum(r.get("total_to_par", 0) for r in p_rounds)
+        p["total_stableford"] = sum(r.get("stableford_points", 0) for r in p_rounds)
+        p["rounds_played"] = len(p_rounds)
+    if tour.get("scoring_format") == "stableford":
+        tour["participants"].sort(key=lambda x: x.get("total_stableford", 0), reverse=True)
+    else:
+        tour["participants"].sort(key=lambda x: x.get("total_to_par", 0))
+    return tour
+
+@api_router.post("/tours/{tour_id}/join")
+async def join_tour(tour_id: str, request: Request):
+    user = await get_current_user(request)
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour or tour["status"] != "active":
+        raise HTTPException(status_code=400, detail="Tour not active")
+    if any(p["user_id"] == user["user_id"] for p in tour.get("participants", [])):
+        raise HTTPException(status_code=400, detail="Already joined")
+    await db.tours.update_one(
+        {"tour_id": tour_id},
+        {"$push": {"participants": {"user_id": user["user_id"], "player_name": user["name"],
+                                     "joined_at": datetime.now(timezone.utc).isoformat()}}}
+    )
+    return {"message": "Joined tour"}
+
+@api_router.post("/tours/{tour_id}/submit-round")
+async def submit_tour_round(tour_id: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    round_id = body.get("round_id")
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour or tour["status"] != "active":
+        raise HTTPException(status_code=400, detail="Tour not active")
+    if not any(p["user_id"] == user["user_id"] for p in tour.get("participants", [])):
+        raise HTTPException(status_code=403, detail="Not in this tour")
+    existing_count = await db.tour_rounds.count_documents({"tour_id": tour_id, "user_id": user["user_id"]})
+    if existing_count >= tour.get("num_rounds", 5):
+        raise HTTPException(status_code=400, detail="All rounds completed for this tour")
+    already = await db.tour_rounds.find_one({"tour_id": tour_id, "round_id": round_id})
+    if already:
+        raise HTTPException(status_code=400, detail="Round already submitted")
+    round_data = await db.rounds.find_one({"round_id": round_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not round_data:
+        raise HTTPException(status_code=404, detail="Round not found")
+    played = [h for h in round_data.get("holes", []) if h.get("strokes", 0) > 0]
+    stableford = sum(calc_stableford(h["strokes"], h["par"]) for h in played)
+    await db.tour_rounds.insert_one({
+        "tour_round_id": f"tr_{uuid.uuid4().hex[:12]}", "tour_id": tour_id,
+        "round_id": round_id, "user_id": user["user_id"],
+        "player_name": round_data.get("player_name", ""), "round_number": existing_count + 1,
+        "course_name": round_data.get("course_name", ""),
+        "total_strokes": round_data.get("total_strokes", 0),
+        "total_to_par": round_data.get("total_to_par", 0),
+        "stableford_points": stableford,
+        "played_at": round_data.get("created_at", "")
+    })
+    return {"message": "Round submitted", "round_number": existing_count + 1}
+
 # Include router
 app.include_router(api_router)
 
