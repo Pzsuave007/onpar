@@ -559,92 +559,103 @@ export default function AdminPanel() {
 
       {/* Scanned Course Review Dialog */}
       <Dialog open={showCourseDialog} onOpenChange={setShowCourseDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: 'Outfit' }}>{scannedCourse?.course_id ? 'Edit Course' : 'Review Scanned Course'}</DialogTitle>
-            <DialogDescription>{scannedCourse?.course_id ? 'Edit the pars and yardages below.' : 'Verify the data. Use arrows to adjust pars.'}</DialogDescription>
+            <DialogDescription>Use arrows to adjust pars. Switch tees with tabs.</DialogDescription>
           </DialogHeader>
-          {scannedCourse && (
-            <div className="space-y-5 py-2">
-              <div>
-                <Label className="text-[#1B3C35]">Course Name</Label>
-                <Input value={scannedCourse.course_name}
-                  onChange={e => setScannedCourse({ ...scannedCourse, course_name: e.target.value })}
-                  className="mt-1 border-[#E2E3DD]" data-testid="scanned-course-name" />
-              </div>
-              {(scannedCourse.tees || []).map((tee, tIdx) => {
-                const teeColor = tee.color === 'blue' ? 'bg-blue-600' : tee.color === 'white' ? 'bg-white border-2 border-gray-300' : 'bg-red-500';
-                const teeText = tee.color === 'white' ? 'text-gray-900' : 'text-white';
-                const updateHolePar = (hIdx, delta) => {
-                  const t = [...scannedCourse.tees]; const hs = [...t[tIdx].holes];
-                  const newPar = Math.min(6, Math.max(3, (hs[hIdx].par || 4) + delta));
-                  hs[hIdx] = { ...hs[hIdx], par: newPar };
-                  t[tIdx] = { ...t[tIdx], holes: hs };
-                  setScannedCourse({ ...scannedCourse, tees: t });
-                };
-                const updateHoleYardage = (hIdx, val) => {
-                  const t = [...scannedCourse.tees]; const hs = [...t[tIdx].holes];
-                  hs[hIdx] = { ...hs[hIdx], yardage: parseInt(val) || 0 };
-                  t[tIdx] = { ...t[tIdx], holes: hs };
-                  setScannedCourse({ ...scannedCourse, tees: t });
-                };
-                return (
-                  <div key={tIdx} className="border border-[#E2E3DD] rounded-xl overflow-hidden">
-                    {/* Tee Header */}
-                    <div className={`flex items-center gap-3 px-4 py-2.5 ${tee.color === 'blue' ? 'bg-blue-600' : tee.color === 'red' ? 'bg-red-500' : 'bg-gray-100'}`}>
-                      <div className={`w-6 h-6 rounded-full ${teeColor} ${teeText} flex items-center justify-center text-xs font-bold`}>
-                        {tee.name?.[0]}
-                      </div>
-                      <span className={`font-bold text-sm ${tee.color === 'white' ? 'text-gray-900' : 'text-white'}`}>{tee.name} Tees</span>
-                      <span className={`text-xs ${tee.color === 'white' ? 'text-gray-500' : 'text-white/70'}`}>
-                        Par {tee.holes?.reduce((s, h) => s + (h.par || 0), 0)} &middot; {tee.total_yardage || '?'}y
-                      </span>
+          {scannedCourse && (() => {
+            const tees = scannedCourse.tees || [];
+            const activeTeeIdx = scannedCourse._activeTee || 0;
+            const activeTee = tees[activeTeeIdx];
+            const setActiveTee = (idx) => setScannedCourse({ ...scannedCourse, _activeTee: idx });
+            const updatePar = (hIdx, delta) => {
+              const t = [...tees]; const hs = [...t[activeTeeIdx].holes];
+              hs[hIdx] = { ...hs[hIdx], par: Math.min(6, Math.max(3, (hs[hIdx].par || 4) + delta)) };
+              t[activeTeeIdx] = { ...t[activeTeeIdx], holes: hs };
+              setScannedCourse({ ...scannedCourse, tees: t });
+            };
+            const updateYardage = (hIdx, val) => {
+              const t = [...tees]; const hs = [...t[activeTeeIdx].holes];
+              hs[hIdx] = { ...hs[hIdx], yardage: parseInt(val) || 0 };
+              t[activeTeeIdx] = { ...t[activeTeeIdx], holes: hs };
+              setScannedCourse({ ...scannedCourse, tees: t });
+            };
+            return (
+              <div className="space-y-4 py-2">
+                <div>
+                  <Label className="text-[#1B3C35]">Course Name</Label>
+                  <Input value={scannedCourse.course_name}
+                    onChange={e => setScannedCourse({ ...scannedCourse, course_name: e.target.value })}
+                    className="mt-1 border-[#E2E3DD] h-12 text-base" data-testid="scanned-course-name" />
+                </div>
+                {/* Tee Tabs */}
+                {tees.length > 0 && (
+                  <div className="flex gap-2">
+                    {tees.map((tee, i) => {
+                      const bg = i === activeTeeIdx
+                        ? (tee.color === 'blue' ? 'bg-blue-600 text-white' : tee.color === 'red' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-900')
+                        : 'bg-[#E8E9E3] text-[#6B6E66]';
+                      return (
+                        <button key={i} onClick={() => setActiveTee(i)}
+                          className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-colors ${bg}`}
+                          data-testid={`tee-tab-${i}`}>
+                          {tee.name}
+                          <span className="block text-[10px] font-normal opacity-75">Par {tee.holes?.reduce((s, h) => s + (h.par || 0), 0)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Holes List - Vertical for mobile */}
+                {activeTee && (
+                  <div className="space-y-1.5">
+                    {/* Header */}
+                    <div className="grid grid-cols-[3rem_1fr_5rem] items-center px-2 text-[10px] text-[#6B6E66] font-bold uppercase">
+                      <span>Hole</span>
+                      <span className="text-center">Par</span>
+                      <span className="text-center">Yards</span>
                     </div>
-                    {/* Holes Grid */}
-                    <div className="p-3 overflow-x-auto">
-                      <div className="grid gap-1.5" style={{ gridTemplateColumns: `2.5rem repeat(${tee.holes?.length || 0}, 1fr)` }}>
-                        {/* Hole numbers */}
-                        <div className="text-[10px] text-[#6B6E66] font-bold flex items-center">Hole</div>
-                        {tee.holes?.map(h => (
-                          <div key={`n${h.hole}`} className="text-center text-[10px] text-[#6B6E66] font-bold">{h.hole}</div>
-                        ))}
-                        {/* Par with stepper */}
-                        <div className="text-[10px] text-[#6B6E66] font-bold flex items-center">Par</div>
-                        {tee.holes?.map((h, hIdx) => (
-                          <div key={`p${h.hole}`} className="flex flex-col items-center" data-testid={`par-stepper-${tIdx}-${h.hole}`}>
-                            <button onClick={() => updateHolePar(hIdx, 1)}
-                              className="w-full h-5 flex items-center justify-center text-[#1B3C35] hover:bg-[#E8E9E3] rounded-t border border-[#E2E3DD] border-b-0 transition-colors"
-                              data-testid={`par-up-${tIdx}-${h.hole}`}>
-                              <svg width="10" height="6" viewBox="0 0 10 6"><path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
-                            </button>
-                            <div className="w-full h-7 flex items-center justify-center text-sm font-bold text-[#1B3C35] border border-[#E2E3DD] bg-white tabular-nums">
-                              {h.par}
-                            </div>
-                            <button onClick={() => updateHolePar(hIdx, -1)}
-                              className="w-full h-5 flex items-center justify-center text-[#1B3C35] hover:bg-[#E8E9E3] rounded-b border border-[#E2E3DD] border-t-0 transition-colors"
-                              data-testid={`par-down-${tIdx}-${h.hole}`}>
-                              <svg width="10" height="6" viewBox="0 0 10 6"><path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
-                            </button>
-                          </div>
-                        ))}
+                    {activeTee.holes?.map((h, hIdx) => (
+                      <div key={h.hole} className="grid grid-cols-[3rem_1fr_5rem] items-center bg-white rounded-lg border border-[#E2E3DD] px-2 py-1"
+                        data-testid={`hole-edit-row-${h.hole}`}>
+                        {/* Hole number */}
+                        <span className="text-base font-bold text-[#1B3C35] tabular-nums">{h.hole}</span>
+                        {/* Par stepper - BIG buttons */}
+                        <div className="flex items-center justify-center gap-3">
+                          <button onClick={() => updatePar(hIdx, -1)}
+                            className="w-10 h-10 rounded-full bg-[#E8E9E3] hover:bg-[#D6D7D2] flex items-center justify-center text-[#1B3C35] active:scale-95 transition-transform"
+                            data-testid={`par-down-${h.hole}`}>
+                            <svg width="14" height="3" viewBox="0 0 14 3"><rect width="14" height="3" rx="1.5" fill="currentColor"/></svg>
+                          </button>
+                          <span className="text-2xl font-bold text-[#1B3C35] w-8 text-center tabular-nums">{h.par}</span>
+                          <button onClick={() => updatePar(hIdx, 1)}
+                            className="w-10 h-10 rounded-full bg-[#E8E9E3] hover:bg-[#D6D7D2] flex items-center justify-center text-[#1B3C35] active:scale-95 transition-transform"
+                            data-testid={`par-up-${h.hole}`}>
+                            <svg width="14" height="14" viewBox="0 0 14 14"><rect x="5.5" width="3" height="14" rx="1.5" fill="currentColor"/><rect y="5.5" width="14" height="3" rx="1.5" fill="currentColor"/></svg>
+                          </button>
+                        </div>
                         {/* Yardage */}
-                        <div className="text-[10px] text-[#6B6E66] font-bold flex items-center">Yds</div>
-                        {tee.holes?.map((h, hIdx) => (
-                          <input key={`y${h.hole}`} type="number" min="0" value={h.yardage || 0}
-                            onChange={e => updateHoleYardage(hIdx, e.target.value)}
-                            className="w-full h-7 text-center text-[10px] border border-[#E2E3DD] rounded bg-white tabular-nums focus:ring-1 focus:ring-[#1B3C35] focus:outline-none"
-                            data-testid={`yardage-${tIdx}-${h.hole}`} />
-                        ))}
+                        <input type="number" min="0" value={h.yardage || ''}
+                          onChange={e => updateYardage(hIdx, e.target.value)}
+                          className="w-full h-10 text-center text-sm border border-[#E2E3DD] rounded-lg bg-white tabular-nums focus:ring-1 focus:ring-[#1B3C35] focus:outline-none"
+                          placeholder="yds" data-testid={`yardage-edit-${h.hole}`} />
                       </div>
+                    ))}
+                    {/* Total */}
+                    <div className="grid grid-cols-[3rem_1fr_5rem] items-center px-2 py-2 bg-[#E8E9E3] rounded-lg font-bold text-sm text-[#1B3C35]">
+                      <span>Total</span>
+                      <span className="text-center">Par {activeTee.holes?.reduce((s, h) => s + (h.par || 0), 0)}</span>
+                      <span className="text-center tabular-nums">{activeTee.holes?.reduce((s, h) => s + (h.yardage || 0), 0)}y</span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </div>
+            );
+          })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCourseDialog(false)}>Cancel</Button>
-            <Button onClick={saveCourse} disabled={saving} className="bg-[#1B3C35] hover:bg-[#1B3C35]/90"
+            <Button onClick={saveCourse} disabled={saving} className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-11"
               data-testid="save-course-btn">
               {saving ? 'Saving...' : scannedCourse?.course_id ? 'Update Course' : 'Save Course'}
             </Button>
