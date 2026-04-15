@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { API } from '@/contexts/AuthContext';
 import axios from 'axios';
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Send } from 'lucide-react';
+import { ArrowLeft, Save, Send, Check } from 'lucide-react';
 
 function calcStableford(strokes, par) {
   if (strokes === 0) return 0;
@@ -24,24 +24,32 @@ export default function ScorecardEntry() {
   const navigate = useNavigate();
   const [tournament, setTournament] = useState(null);
   const [holes, setHoles] = useState([]);
+  const [roundNumber, setRoundNumber] = useState(1);
+  const [allScorecards, setAllScorecards] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isRegistered, setIsRegistered] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [tRes, scRes] = await Promise.all([
+        const [tRes, scRes, regRes] = await Promise.all([
           axios.get(`${API}/tournaments/${tournamentId}`),
-          axios.get(`${API}/scorecards/tournament/${tournamentId}/my`)
+          axios.get(`${API}/scorecards/tournament/${tournamentId}/my`),
+          axios.get(`${API}/registrations/my`)
         ]);
         const t = tRes.data;
         setTournament(t);
+        setIsRegistered(regRes.data.includes(tournamentId));
 
-        if (scRes.data && scRes.data.holes) {
-          setHoles(scRes.data.holes);
-        } else {
-          setHoles(t.par_per_hole.map((par, i) => ({ hole: i + 1, par, strokes: 0 })));
+        const scMap = {};
+        for (const sc of (scRes.data || [])) {
+          scMap[sc.round_number] = sc.holes;
         }
+        setAllScorecards(scMap);
+
+        const round1Holes = scMap[1] || t.par_per_hole.map((par, i) => ({ hole: i + 1, par, strokes: 0 }));
+        setHoles(round1Holes);
       } catch {
         toast.error('Failed to load tournament');
         navigate('/dashboard');
@@ -51,6 +59,13 @@ export default function ScorecardEntry() {
     };
     fetchData();
   }, [tournamentId, navigate]);
+
+  const switchRound = useCallback((newRound) => {
+    setAllScorecards(prev => ({ ...prev, [roundNumber]: holes }));
+    const existingHoles = allScorecards[newRound];
+    setHoles(existingHoles || (tournament?.par_per_hole?.map((par, i) => ({ hole: i + 1, par, strokes: 0 })) || []));
+    setRoundNumber(newRound);
+  }, [roundNumber, holes, allScorecards, tournament]);
 
   const updateHole = (index, strokes) => {
     const val = parseInt(strokes) || 0;
@@ -62,18 +77,38 @@ export default function ScorecardEntry() {
     });
   };
 
+  const handleRegister = async () => {
+    try {
+      await axios.post(`${API}/tournaments/${tournamentId}/register`);
+      setIsRegistered(true);
+      toast.success('Registered for tournament!');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Registration failed');
+    }
+  };
+
   const saveScorecard = async (forceSubmit = false) => {
     setSaving(true);
     try {
       await axios.post(`${API}/scorecards`, {
         tournament_id: tournamentId,
-        round_number: 1,
+        round_number: roundNumber,
         holes
       });
+      // Update local scorecards map
+      setAllScorecards(prev => ({ ...prev, [roundNumber]: holes }));
       toast.success(forceSubmit ? 'Scorecard submitted!' : 'Progress saved!');
-      if (forceSubmit) navigate('/dashboard');
+      if (forceSubmit) {
+        const numRounds = tournament?.num_rounds || 1;
+        if (roundNumber < numRounds) {
+          switchRound(roundNumber + 1);
+          toast.info(`Moving to Round ${roundNumber + 1}`);
+        } else {
+          navigate('/dashboard');
+        }
+      }
     } catch (err) {
-      toast.error('Failed to save scorecard');
+      toast.error(err.response?.data?.detail || 'Failed to save scorecard');
     } finally {
       setSaving(false);
     }
@@ -87,6 +122,27 @@ export default function ScorecardEntry() {
     );
   }
 
+  // Not registered state
+  if (isRegistered === false) {
+    return (
+      <div className="min-h-screen p-4 md:p-8 max-w-5xl mx-auto fade-in" data-testid="scorecard-entry">
+        <Button variant="ghost" className="mb-4 text-[#6B6E66]" onClick={() => navigate('/dashboard')} data-testid="back-to-dashboard">
+          <ArrowLeft className="h-4 w-4 mr-1" /> Back to Dashboard
+        </Button>
+        <Card className="border-[#E2E3DD] shadow-none">
+          <CardContent className="py-16 text-center">
+            <h2 className="text-xl font-bold text-[#1B3C35] mb-3" style={{ fontFamily: 'Outfit' }}>{tournament.name}</h2>
+            <p className="text-[#6B6E66] mb-6">You need to register for this tournament before entering scores.</p>
+            <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={handleRegister} data-testid="register-from-scorecard-btn">
+              Register for Tournament
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const numRounds = tournament.num_rounds || 1;
   const front9 = holes.slice(0, Math.min(9, holes.length));
   const back9 = holes.length > 9 ? holes.slice(9) : [];
   const played = holes.filter(h => h.strokes > 0);
@@ -97,7 +153,7 @@ export default function ScorecardEntry() {
   const allFilled = holes.every(h => h.strokes > 0);
 
   const formatScore = (s) => s === 0 ? 'E' : s > 0 ? `+${s}` : `${s}`;
-  const scoreColor = (s) => s < 0 ? 'text-[#C96A52]' : s > 0 ? 'text-[#1D2D44]' : 'text-[#4A5D23]';
+  const scoreClr = (s) => s < 0 ? 'text-[#C96A52]' : s > 0 ? 'text-[#1D2D44]' : 'text-[#4A5D23]';
 
   const HoleGrid = ({ holeSet, label }) => {
     const setStrokes = holeSet.reduce((s, h) => s + h.strokes, 0);
@@ -175,12 +231,38 @@ export default function ScorecardEntry() {
               <CardTitle className="text-xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
                 {tournament.name}
               </CardTitle>
-              <p className="text-sm text-[#6B6E66] mt-1">{tournament.course_name} &middot; Round 1</p>
+              <p className="text-sm text-[#6B6E66] mt-1">{tournament.course_name}</p>
             </div>
-            <Badge variant="outline" className="capitalize text-xs">{tournament.scoring_format} play</Badge>
+            <div className="flex gap-2">
+              <Badge variant="outline" className="capitalize text-xs">{tournament.scoring_format} play</Badge>
+              {numRounds > 1 && <Badge variant="outline" className="text-xs">{numRounds} rounds</Badge>}
+            </div>
           </div>
+
+          {/* Round Tabs */}
+          {numRounds > 1 && (
+            <div className="flex gap-2 mt-4">
+              {Array.from({ length: numRounds }, (_, i) => i + 1).map(r => (
+                <Button
+                  key={r}
+                  variant={r === roundNumber ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => switchRound(r)}
+                  className={r === roundNumber ? 'bg-[#1B3C35] hover:bg-[#1B3C35]/90' : 'border-[#E2E3DD] text-[#1B3C35]'}
+                  data-testid={`round-tab-${r}`}
+                >
+                  Round {r}
+                  {allScorecards[r] && <Check className="h-3 w-3 ml-1 opacity-60" />}
+                </Button>
+              ))}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
+          <p className="text-xs text-[#6B6E66] uppercase tracking-wider font-bold mb-4">
+            Round {roundNumber} of {numRounds}
+          </p>
+
           <HoleGrid holeSet={front9} label="Front 9" />
           {back9.length > 0 && <HoleGrid holeSet={back9} label="Back 9" />}
 
@@ -192,7 +274,7 @@ export default function ScorecardEntry() {
             </div>
             <div data-testid="total-to-par">
               <p className="text-xs text-[#6B6E66] uppercase tracking-wider font-bold">To Par</p>
-              <p className={`text-2xl font-bold tabular-nums ${played.length > 0 ? scoreColor(toPar) : 'text-[#6B6E66]'}`}>
+              <p className={`text-2xl font-bold tabular-nums ${played.length > 0 ? scoreClr(toPar) : 'text-[#6B6E66]'}`}>
                 {played.length > 0 ? formatScore(toPar) : '-'}
               </p>
             </div>
@@ -215,7 +297,7 @@ export default function ScorecardEntry() {
             </Button>
             <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => saveScorecard(true)}
               disabled={saving || !allFilled} data-testid="submit-scorecard-btn">
-              <Send className="h-4 w-4 mr-1" />{saving ? 'Submitting...' : allFilled ? 'Submit Scorecard' : `Complete All ${holes.length} Holes`}
+              <Send className="h-4 w-4 mr-1" />{saving ? 'Submitting...' : allFilled ? 'Submit Round' : `Complete All ${holes.length} Holes`}
             </Button>
           </div>
         </CardContent>

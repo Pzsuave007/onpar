@@ -55,6 +55,7 @@ export default function AdminPanel() {
     setForm({
       name: t.name, course_name: t.course_name, start_date: t.start_date,
       end_date: t.end_date, scoring_format: t.scoring_format, num_holes: t.num_holes,
+      num_rounds: t.num_rounds || 1,
       par_per_hole: [...t.par_per_hole], max_players: t.max_players, description: t.description || ''
     });
     setShowDialog(true);
@@ -71,7 +72,7 @@ export default function AdminPanel() {
         await axios.put(`${API}/tournaments/${editId}`, {
           name: form.name, course_name: form.course_name, start_date: form.start_date,
           end_date: form.end_date, scoring_format: form.scoring_format,
-          max_players: form.max_players, description: form.description
+          num_rounds: form.num_rounds, max_players: form.max_players, description: form.description
         });
         toast.success('Tournament updated');
       } else {
@@ -181,6 +182,8 @@ export default function AdminPanel() {
                         </div>
                         <p className="text-sm text-[#6B6E66] mt-1">
                           {t.course_name} &middot; {t.start_date} to {t.end_date} &middot; Par {t.total_par} &middot; {t.num_holes} holes
+                          {(t.num_rounds || 1) > 1 ? ` &middot; ${t.num_rounds} rounds` : ''}
+                          &middot; <Users className="inline h-3 w-3" /> {t.participant_count || 0} players
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -311,6 +314,20 @@ export default function AdminPanel() {
                   </Select>
                 </div>
               )}
+              <div>
+                <Label className="text-[#1B3C35]">Number of Rounds</Label>
+                <Select value={String(form.num_rounds)} onValueChange={v => setForm({ ...form, num_rounds: parseInt(v) })}>
+                  <SelectTrigger className="mt-1 border-[#E2E3DD]" data-testid="form-num-rounds">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 Round</SelectItem>
+                    <SelectItem value="2">2 Rounds</SelectItem>
+                    <SelectItem value="3">3 Rounds</SelectItem>
+                    <SelectItem value="4">4 Rounds</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label className="text-[#1B3C35]">Max Players</Label>
                 <Input type="number" value={form.max_players}

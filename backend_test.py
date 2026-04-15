@@ -12,7 +12,9 @@ class FairwayAPITester:
         self.tests_run = 0
         self.tests_passed = 0
         self.tournament_id = None
+        self.multi_round_tournament_id = None
         self.scorecard_id = None
+        self.player_user_id = None
 
     def run_test(self, name, method, endpoint, expected_status, data=None, headers=None, auth_token=None):
         """Run a single API test"""
@@ -115,6 +117,9 @@ class FairwayAPITester:
         )
         if success:
             print(f"   User: {response.get('name')} ({response.get('role')})")
+            if user_type == "player" and 'user_id' in response:
+                self.player_user_id = response['user_id']
+                print(f"   Player User ID: {self.player_user_id}")
         return success
 
     def test_logout(self, token, user_type):
@@ -153,6 +158,35 @@ class FairwayAPITester:
         if success and 'tournament_id' in response:
             self.tournament_id = response['tournament_id']
             print(f"   Tournament ID: {self.tournament_id}")
+        return success
+
+    def test_create_multi_round_tournament(self):
+        """Test creating multi-round tournament with num_rounds=4"""
+        tournament_data = {
+            "name": "Test Multi-Round Championship",
+            "course_name": "Test Golf Course",
+            "start_date": "2025-02-10",
+            "end_date": "2025-02-13",
+            "scoring_format": "stroke",
+            "num_holes": 18,
+            "num_rounds": 4,
+            "par_per_hole": [4, 3, 5, 4, 4, 3, 4, 5, 4, 4, 3, 5, 4, 4, 3, 4, 5, 4],
+            "max_players": 100,
+            "description": "Test 4-round tournament"
+        }
+        
+        success, response = self.run_test(
+            "Create Multi-Round Tournament (4 rounds)",
+            "POST",
+            "tournaments",
+            200,
+            data=tournament_data,
+            auth_token=self.admin_token
+        )
+        if success and 'tournament_id' in response:
+            self.multi_round_tournament_id = response['tournament_id']
+            print(f"   Multi-round Tournament ID: {self.multi_round_tournament_id}")
+            print(f"   Number of rounds: {response.get('num_rounds', 1)}")
         return success
 
     def test_create_stableford_tournament(self):
@@ -286,6 +320,315 @@ class FairwayAPITester:
             print(f"   Found {len(response)} scorecards")
         return success
 
+    # NEW FEATURE TESTS - Tournament Registration
+    def test_tournament_registration(self):
+        """Test player registration for tournament"""
+        if not self.tournament_id:
+            print("❌ No tournament ID available for registration")
+            return False
+            
+        success, response = self.run_test(
+            "Register for Tournament",
+            "POST",
+            f"tournaments/{self.tournament_id}/register",
+            200,
+            auth_token=self.player_token
+        )
+        if success:
+            print(f"   Registration ID: {response.get('registration_id')}")
+        return success
+
+    def test_get_my_registrations(self):
+        """Test getting player's registered tournaments"""
+        success, response = self.run_test(
+            "Get My Registrations",
+            "GET",
+            "registrations/my",
+            200,
+            auth_token=self.player_token
+        )
+        if success:
+            print(f"   Registered for {len(response)} tournaments")
+            print(f"   Tournament IDs: {response}")
+        return success
+
+    def test_get_tournament_participants(self):
+        """Test getting tournament participants"""
+        if not self.tournament_id:
+            print("❌ No tournament ID available for participants")
+            return False
+            
+        success, response = self.run_test(
+            "Get Tournament Participants",
+            "GET",
+            f"tournaments/{self.tournament_id}/participants",
+            200
+        )
+        if success:
+            print(f"   Found {len(response)} participants")
+        return success
+
+    def test_scorecard_without_registration(self):
+        """Test submitting scorecard without registration (should fail)"""
+        if not self.multi_round_tournament_id:
+            print("❌ No multi-round tournament ID available")
+            return False
+            
+        scorecard_data = {
+            "tournament_id": self.multi_round_tournament_id,
+            "round_number": 1,
+            "holes": [
+                {"hole": 1, "strokes": 4, "par": 4},
+                {"hole": 2, "strokes": 3, "par": 3}
+            ]
+        }
+        
+        success, response = self.run_test(
+            "Submit Scorecard Without Registration (should fail)",
+            "POST",
+            "scorecards",
+            403,  # Should return 403 Forbidden
+            data=scorecard_data,
+            auth_token=self.player_token
+        )
+        return success
+
+    # NEW FEATURE TESTS - Multi-Round Support
+    def test_multi_round_registration_and_scoring(self):
+        """Test registration and multi-round scoring"""
+        if not self.multi_round_tournament_id:
+            print("❌ No multi-round tournament ID available")
+            return False
+
+        # First register for the multi-round tournament
+        success, response = self.run_test(
+            "Register for Multi-Round Tournament",
+            "POST",
+            f"tournaments/{self.multi_round_tournament_id}/register",
+            200,
+            auth_token=self.player_token
+        )
+        if not success:
+            return False
+
+        # Activate the tournament
+        success, response = self.run_test(
+            "Activate Multi-Round Tournament",
+            "PUT",
+            f"tournaments/{self.multi_round_tournament_id}",
+            200,
+            data={"status": "active"},
+            auth_token=self.admin_token
+        )
+        if not success:
+            return False
+
+        return True
+
+    def test_submit_round_1_scorecard(self):
+        """Test submitting round 1 scorecard"""
+        if not self.multi_round_tournament_id:
+            print("❌ No multi-round tournament ID available")
+            return False
+            
+        scorecard_data = {
+            "tournament_id": self.multi_round_tournament_id,
+            "round_number": 1,
+            "holes": [
+                {"hole": 1, "strokes": 4, "par": 4},
+                {"hole": 2, "strokes": 3, "par": 3},
+                {"hole": 3, "strokes": 6, "par": 5},
+                {"hole": 4, "strokes": 5, "par": 4},
+                {"hole": 5, "strokes": 4, "par": 4},
+                {"hole": 6, "strokes": 2, "par": 3},
+                {"hole": 7, "strokes": 4, "par": 4},
+                {"hole": 8, "strokes": 5, "par": 5},
+                {"hole": 9, "strokes": 4, "par": 4},
+                {"hole": 10, "strokes": 4, "par": 4},
+                {"hole": 11, "strokes": 3, "par": 3},
+                {"hole": 12, "strokes": 5, "par": 5},
+                {"hole": 13, "strokes": 4, "par": 4},
+                {"hole": 14, "strokes": 4, "par": 4},
+                {"hole": 15, "strokes": 3, "par": 3},
+                {"hole": 16, "strokes": 4, "par": 4},
+                {"hole": 17, "strokes": 5, "par": 5},
+                {"hole": 18, "strokes": 4, "par": 4}
+            ]
+        }
+        
+        success, response = self.run_test(
+            "Submit Round 1 Scorecard",
+            "POST",
+            "scorecards",
+            200,
+            data=scorecard_data,
+            auth_token=self.player_token
+        )
+        if success:
+            print(f"   Round 1 - Total strokes: {response.get('total_strokes')}")
+            print(f"   Round 1 - To par: {response.get('total_to_par')}")
+        return success
+
+    def test_submit_round_2_scorecard(self):
+        """Test submitting round 2 scorecard"""
+        if not self.multi_round_tournament_id:
+            print("❌ No multi-round tournament ID available")
+            return False
+            
+        scorecard_data = {
+            "tournament_id": self.multi_round_tournament_id,
+            "round_number": 2,
+            "holes": [
+                {"hole": 1, "strokes": 3, "par": 4},
+                {"hole": 2, "strokes": 3, "par": 3},
+                {"hole": 3, "strokes": 5, "par": 5},
+                {"hole": 4, "strokes": 4, "par": 4},
+                {"hole": 5, "strokes": 5, "par": 4},
+                {"hole": 6, "strokes": 3, "par": 3},
+                {"hole": 7, "strokes": 4, "par": 4},
+                {"hole": 8, "strokes": 4, "par": 5},
+                {"hole": 9, "strokes": 4, "par": 4},
+                {"hole": 10, "strokes": 4, "par": 4},
+                {"hole": 11, "strokes": 2, "par": 3},
+                {"hole": 12, "strokes": 5, "par": 5},
+                {"hole": 13, "strokes": 4, "par": 4},
+                {"hole": 14, "strokes": 4, "par": 4},
+                {"hole": 15, "strokes": 3, "par": 3},
+                {"hole": 16, "strokes": 4, "par": 4},
+                {"hole": 17, "strokes": 5, "par": 5},
+                {"hole": 18, "strokes": 4, "par": 4}
+            ]
+        }
+        
+        success, response = self.run_test(
+            "Submit Round 2 Scorecard",
+            "POST",
+            "scorecards",
+            200,
+            data=scorecard_data,
+            auth_token=self.player_token
+        )
+        if success:
+            print(f"   Round 2 - Total strokes: {response.get('total_strokes')}")
+            print(f"   Round 2 - To par: {response.get('total_to_par')}")
+        return success
+
+    def test_invalid_round_number(self):
+        """Test submitting scorecard with invalid round number"""
+        if not self.multi_round_tournament_id:
+            print("❌ No multi-round tournament ID available")
+            return False
+            
+        scorecard_data = {
+            "tournament_id": self.multi_round_tournament_id,
+            "round_number": 5,  # Invalid - tournament only has 4 rounds
+            "holes": [{"hole": 1, "strokes": 4, "par": 4}]
+        }
+        
+        success, response = self.run_test(
+            "Submit Scorecard with Invalid Round Number (should fail)",
+            "POST",
+            "scorecards",
+            400,  # Should return 400 Bad Request
+            data=scorecard_data,
+            auth_token=self.player_token
+        )
+        return success
+
+    def test_get_tournament_scorecards(self):
+        """Test getting all round scorecards for a tournament"""
+        if not self.multi_round_tournament_id:
+            print("❌ No multi-round tournament ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Get Tournament Scorecards",
+            "GET",
+            f"scorecards/tournament/{self.multi_round_tournament_id}/my",
+            200,
+            auth_token=self.player_token
+        )
+        if success:
+            print(f"   Found {len(response)} round scorecards")
+            for sc in response:
+                print(f"   Round {sc.get('round_number')}: {sc.get('total_strokes')} strokes, {sc.get('total_to_par')} to par")
+        return success
+
+    def test_multi_round_leaderboard(self):
+        """Test leaderboard aggregation across multiple rounds"""
+        if not self.multi_round_tournament_id:
+            print("❌ No multi-round tournament ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Get Multi-Round Leaderboard",
+            "GET",
+            f"leaderboard/{self.multi_round_tournament_id}",
+            200
+        )
+        if success:
+            leaderboard = response.get('leaderboard', [])
+            print(f"   Leaderboard entries: {len(leaderboard)}")
+            if leaderboard:
+                for i, entry in enumerate(leaderboard[:3]):
+                    rounds_info = entry.get('rounds', [])
+                    print(f"   {i+1}. {entry.get('player_name')} - {entry.get('total_to_par')} to par ({len(rounds_info)} rounds)")
+        return success
+
+    # NEW FEATURE TESTS - Player Profiles
+    def test_player_profile(self):
+        """Test getting player profile with stats and history"""
+        if not self.player_user_id:
+            print("❌ No player user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Get Player Profile",
+            "GET",
+            f"players/{self.player_user_id}/profile",
+            200
+        )
+        if success:
+            player = response.get('player', {})
+            stats = response.get('stats', {})
+            history = response.get('history', [])
+            print(f"   Player: {player.get('name')} ({player.get('role')})")
+            print(f"   Total rounds: {stats.get('total_rounds')}")
+            print(f"   Tournaments played: {stats.get('tournaments_played')}")
+            print(f"   Avg to par: {stats.get('avg_to_par')}")
+            print(f"   History entries: {len(history)}")
+        return success
+
+    def test_tournaments_with_participant_count(self):
+        """Test that tournaments return participant_count"""
+        success, response = self.run_test(
+            "List Tournaments with Participant Count",
+            "GET",
+            "tournaments",
+            200
+        )
+        if success:
+            print(f"   Found {len(response)} tournaments")
+            for t in response:
+                participant_count = t.get('participant_count', 0)
+                print(f"   {t.get('name')}: {participant_count} participants")
+        return success
+
+    def test_tournament_unregistration(self):
+        """Test player unregistration from tournament"""
+        if not self.tournament_id:
+            print("❌ No tournament ID available for unregistration")
+            return False
+            
+        success, response = self.run_test(
+            "Unregister from Tournament",
+            "DELETE",
+            f"tournaments/{self.tournament_id}/unregister",
+            200,
+            auth_token=self.player_token
+        )
+        return success
+
 def main():
     print("🏌️ Starting Fairway Golf API Tests")
     print("=" * 50)
@@ -306,13 +649,35 @@ def main():
         # Tournament management
         ("Create Stroke Tournament", tester.test_create_stroke_tournament),
         ("Create Stableford Tournament", tester.test_create_stableford_tournament),
+        ("Create Multi-Round Tournament", tester.test_create_multi_round_tournament),
         ("List Tournaments", tester.test_list_tournaments),
         ("Update Tournament Status", tester.test_update_tournament_status),
         
-        # Scorecard and leaderboard
+        # NEW FEATURE: Tournament Registration
+        ("Tournament Registration", tester.test_tournament_registration),
+        ("Get My Registrations", tester.test_get_my_registrations),
+        ("Get Tournament Participants", tester.test_get_tournament_participants),
+        ("Scorecard Without Registration", tester.test_scorecard_without_registration),
+        
+        # Scorecard and leaderboard (single round)
         ("Submit Scorecard", tester.test_submit_scorecard),
         ("Get Public Leaderboard", tester.test_get_leaderboard),
         ("Get My Scorecards", tester.test_get_my_scorecards),
+        
+        # NEW FEATURE: Multi-Round Support
+        ("Multi-Round Registration and Setup", tester.test_multi_round_registration_and_scoring),
+        ("Submit Round 1 Scorecard", tester.test_submit_round_1_scorecard),
+        ("Submit Round 2 Scorecard", tester.test_submit_round_2_scorecard),
+        ("Invalid Round Number", tester.test_invalid_round_number),
+        ("Get Tournament Scorecards", tester.test_get_tournament_scorecards),
+        ("Multi-Round Leaderboard", tester.test_multi_round_leaderboard),
+        
+        # NEW FEATURE: Player Profiles
+        ("Player Profile", tester.test_player_profile),
+        ("Tournaments with Participant Count", tester.test_tournaments_with_participant_count),
+        
+        # Registration management
+        ("Tournament Unregistration", tester.test_tournament_unregistration),
         
         # Logout tests
         ("Admin Logout", lambda: tester.test_logout(tester.admin_token, "admin")),

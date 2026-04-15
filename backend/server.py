@@ -42,6 +42,7 @@ class TournamentCreate(BaseModel):
     end_date: str
     scoring_format: str
     num_holes: int = 18
+    num_rounds: int = 1
     par_per_hole: List[int]
     max_players: int = 100
     description: str = ""
@@ -53,6 +54,7 @@ class TournamentUpdate(BaseModel):
     end_date: Optional[str] = None
     scoring_format: Optional[str] = None
     status: Optional[str] = None
+    num_rounds: Optional[int] = None
     max_players: Optional[int] = None
     description: Optional[str] = None
 
@@ -272,7 +274,58 @@ async def delete_tournament(tournament_id: str, request: Request):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Tournament not found")
     await db.scorecards.delete_many({"tournament_id": tournament_id})
+    await db.registrations.delete_many({"tournament_id": tournament_id})
     return {"message": "Tournament deleted"}
+
+# --- Registration Endpoints ---
+@api_router.post("/tournaments/{tournament_id}/register")
+async def register_for_tournament(tournament_id: str, request: Request):
+    user = await get_current_user(request)
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if tournament["status"] not in ["upcoming", "active"]:
+        raise HTTPException(status_code=400, detail="Registration closed")
+    existing = await db.registrations.find_one(
+        {"tournament_id": tournament_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="Already registered")
+    count = await db.registrations.count_documents({"tournament_id": tournament_id})
+    if count >= tournament.get("max_players", 100):
+        raise HTTPException(status_code=400, detail="Tournament is full")
+    reg_id = f"reg_{uuid.uuid4().hex[:12]}"
+    await db.registrations.insert_one({
+        "registration_id": reg_id, "tournament_id": tournament_id,
+        "user_id": user["user_id"], "player_name": user["name"],
+        "registered_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"message": "Registered successfully", "registration_id": reg_id}
+
+@api_router.delete("/tournaments/{tournament_id}/unregister")
+async def unregister_from_tournament(tournament_id: str, request: Request):
+    user = await get_current_user(request)
+    has_scores = await db.scorecards.find_one(
+        {"tournament_id": tournament_id, "user_id": user["user_id"]}
+    )
+    if has_scores:
+        raise HTTPException(status_code=400, detail="Cannot unregister after submitting scores")
+    result = await db.registrations.delete_one(
+        {"tournament_id": tournament_id, "user_id": user["user_id"]}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Not registered")
+    return {"message": "Unregistered successfully"}
+
+@api_router.get("/tournaments/{tournament_id}/participants")
+async def get_participants(tournament_id: str):
+    return await db.registrations.find({"tournament_id": tournament_id}, {"_id": 0}).to_list(1000)
+
+@api_router.get("/registrations/my")
+async def get_my_registrations(request: Request):
+    user = await get_current_user(request)
+    regs = await db.registrations.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(100)
+    return [r["tournament_id"] for r in regs]
 
 # --- Scorecard Endpoints ---
 def calc_stableford(strokes: int, par: int) -> int:
@@ -290,6 +343,16 @@ async def submit_scorecard(data: ScorecardSubmit, request: Request):
     tournament = await db.tournaments.find_one({"tournament_id": data.tournament_id}, {"_id": 0})
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
+    # Check registration
+    reg = await db.registrations.find_one(
+        {"tournament_id": data.tournament_id, "user_id": user["user_id"]}
+    )
+    if not reg:
+        raise HTTPException(status_code=403, detail="Register for this tournament first")
+    # Validate round number
+    max_rounds = tournament.get("num_rounds", 1)
+    if data.round_number < 1 or data.round_number > max_rounds:
+        raise HTTPException(status_code=400, detail=f"Invalid round. Tournament has {max_rounds} round(s)")
 
     existing = await db.scorecards.find_one({
         "tournament_id": data.tournament_id, "user_id": user["user_id"],
@@ -337,13 +400,13 @@ async def get_my_scorecards(request: Request):
     return await db.scorecards.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
 
 @api_router.get("/scorecards/tournament/{tournament_id}/my")
-async def get_my_tournament_scorecard(tournament_id: str, request: Request):
+async def get_my_tournament_scorecards(tournament_id: str, request: Request):
     user = await get_current_user(request)
-    sc = await db.scorecards.find_one(
+    scorecards = await db.scorecards.find(
         {"tournament_id": tournament_id, "user_id": user["user_id"]},
         {"_id": 0}
-    )
-    return sc or {}
+    ).sort("round_number", 1).to_list(20)
+    return scorecards
 
 # --- Leaderboard (Public) ---
 @api_router.get("/leaderboard/{tournament_id}")
@@ -437,6 +500,39 @@ async def update_profile(request: Request):
     result = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
     return result
 
+# --- Player Profile (Public) ---
+@api_router.get("/players/{user_id}/profile")
+async def get_player_profile(user_id: str):
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Player not found")
+    scorecards = await db.scorecards.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    submitted = [s for s in scorecards if s["status"] == "submitted"]
+    tournament_ids = list(set(s["tournament_id"] for s in scorecards))
+    tournaments = await db.tournaments.find(
+        {"tournament_id": {"$in": tournament_ids}}, {"_id": 0}
+    ).to_list(100)
+    t_map = {t["tournament_id"]: t for t in tournaments}
+    stats = {
+        "total_rounds": len(submitted),
+        "tournaments_played": len(tournament_ids),
+        "avg_to_par": round(sum(s["total_to_par"] for s in submitted) / len(submitted), 1) if submitted else 0,
+        "best_to_par": min((s["total_to_par"] for s in submitted), default=0),
+        "avg_strokes": round(sum(s["total_strokes"] for s in submitted) / len(submitted), 1) if submitted else 0,
+        "best_strokes": min((s["total_strokes"] for s in submitted), default=0),
+    }
+    history = []
+    for sc in scorecards[:20]:
+        t = t_map.get(sc["tournament_id"], {})
+        history.append({
+            "scorecard_id": sc["scorecard_id"], "tournament_name": t.get("name", "Unknown"),
+            "course_name": t.get("course_name", ""), "scoring_format": t.get("scoring_format", "stroke"),
+            "round_number": sc["round_number"], "total_strokes": sc["total_strokes"],
+            "total_to_par": sc["total_to_par"], "stableford_points": sc.get("stableford_points", 0),
+            "status": sc["status"], "date": sc.get("created_at", "")
+        })
+    return {"player": user_response(user), "stats": stats, "history": history}
+
 # Include router
 app.include_router(api_router)
 
@@ -458,6 +554,8 @@ async def startup():
     await db.tournaments.create_index("tournament_id", unique=True)
     await db.scorecards.create_index("scorecard_id", unique=True)
     await db.scorecards.create_index([("tournament_id", 1), ("user_id", 1)])
+    await db.registrations.create_index([("tournament_id", 1), ("user_id", 1)], unique=True)
+    await db.registrations.create_index("registration_id", unique=True)
     logger.info("Database indexes created")
 
 @app.on_event("shutdown")

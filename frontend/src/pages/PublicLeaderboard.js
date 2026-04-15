@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trophy, MapPin, Calendar } from 'lucide-react';
+import { Trophy, MapPin, Calendar, Users } from 'lucide-react';
+import { Link as RouterLink } from 'react-router-dom';
 
 function formatToPar(score) {
   if (score === 0) return 'E';
@@ -110,6 +111,8 @@ export default function PublicLeaderboard() {
                   <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-[#6B6E66]">
                     <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{tournament.course_name}</span>
                     <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{tournament.start_date}</span>
+                    <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />{tournament.participant_count || 0} players</span>
+                    {(tournament.num_rounds || 1) > 1 && <span>{tournament.num_rounds} rounds</span>}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -166,7 +169,10 @@ export default function PublicLeaderboard() {
                           {entry.tied ? 'T' : ''}{entry.position}
                         </TableCell>
                         <TableCell className="font-medium text-[#1B3C35]">
-                          {entry.player_name}
+                          <RouterLink to={`/player/${entry.user_id}`} className="hover:underline hover:text-[#C96A52] transition-colors"
+                            data-testid={`player-link-${entry.user_id}`}>
+                            {entry.player_name}
+                          </RouterLink>
                         </TableCell>
                         <TableCell className={`text-center tabular-nums text-lg ${isStableford ? 'font-bold text-[#1B3C35]' : scoreColor(entry.total_to_par)}`}>
                           {isStableford ? entry.stableford_points : formatToPar(entry.total_to_par)}

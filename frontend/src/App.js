@@ -9,6 +9,7 @@ import PlayerDashboard from '@/pages/PlayerDashboard';
 import ScorecardEntry from '@/pages/ScorecardEntry';
 import AdminPanel from '@/pages/AdminPanel';
 import PublicLeaderboard from '@/pages/PublicLeaderboard';
+import PlayerProfile from '@/pages/PlayerProfile';
 import '@/App.css';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -44,6 +45,7 @@ function AppRouter() {
         <Route path="/dashboard" element={<ProtectedRoute><PlayerDashboard /></ProtectedRoute>} />
         <Route path="/scorecard/:tournamentId" element={<ProtectedRoute><ScorecardEntry /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
+        <Route path="/player/:userId" element={<PlayerProfile />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
