@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio, Share2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio, Share2, Camera, MapPin, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useRef } from 'react';
 
 const DEFAULT_PAR = [4, 3, 5, 4, 4, 3, 4, 5, 4, 4, 3, 5, 4, 4, 3, 4, 5, 4];
 const DEFAULT_PAR_9 = [4, 3, 5, 4, 4, 3, 4, 5, 4];
@@ -32,17 +33,25 @@ const emptyForm = {
 export default function AdminPanel() {
   const [tournaments, setTournaments] = useState([]);
   const [players, setPlayers] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [showDialog, setShowDialog] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
+  // Course scanning
+  const [scanning, setScanning] = useState(false);
+  const [scannedCourse, setScannedCourse] = useState(null);
+  const [showCourseDialog, setShowCourseDialog] = useState(false);
+  const fileInputRef = useRef(null);
 
   const fetchTournaments = () => axios.get(`${API}/tournaments`).then(r => setTournaments(r.data));
   const fetchPlayers = () => axios.get(`${API}/players`).then(r => setPlayers(r.data));
+  const fetchCourses = () => axios.get(`${API}/courses`).then(r => setCourses(r.data));
 
   useEffect(() => {
     fetchTournaments().catch(() => toast.error('Failed to load tournaments'));
     fetchPlayers().catch(() => {});
+    fetchCourses().catch(() => {});
   }, []);
 
   const openCreate = () => {
@@ -136,6 +145,63 @@ export default function AdminPanel() {
     setForm(prev => ({ ...prev, par_per_hole: updated }));
   };
 
+  const handleScanPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanning(true);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+      const res = await axios.post(`${API}/courses/scan`, { image_base64: base64 });
+      setScannedCourse(res.data);
+      setShowCourseDialog(true);
+      toast.success('Scorecard scanned!');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Scan failed. Try a clearer photo.');
+    } finally {
+      setScanning(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const saveCourse = async () => {
+    if (!scannedCourse) return;
+    setSaving(true);
+    try {
+      await axios.post(`${API}/courses`, scannedCourse);
+      toast.success('Course saved!');
+      setShowCourseDialog(false);
+      setScannedCourse(null);
+      fetchCourses();
+    } catch (err) {
+      toast.error('Failed to save course');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteCourse = async (courseId) => {
+    if (!window.confirm('Delete this course?')) return;
+    try {
+      await axios.delete(`${API}/courses/${courseId}`);
+      toast.success('Course deleted');
+      fetchCourses();
+    } catch { toast.error('Failed to delete'); }
+  };
+
+  const applyCourseToForm = (course) => {
+    setForm(prev => ({
+      ...prev,
+      course_name: course.course_name,
+      num_holes: course.num_holes,
+      par_per_hole: course.holes.map(h => h.par)
+    }));
+    toast.success(`Applied ${course.course_name}`);
+  };
+
   return (
     <div className="min-h-screen p-6 md:p-8 max-w-7xl mx-auto fade-in" data-testid="admin-panel">
       <div className="mb-8">
@@ -149,6 +215,9 @@ export default function AdminPanel() {
         <TabsList className="bg-[#E8E9E3]">
           <TabsTrigger value="tournaments" data-testid="admin-tournaments-tab">
             <Trophy className="h-4 w-4 mr-1" />Tournaments
+          </TabsTrigger>
+          <TabsTrigger value="courses" data-testid="admin-courses-tab">
+            <MapPin className="h-4 w-4 mr-1" />Courses
           </TabsTrigger>
           <TabsTrigger value="players" data-testid="admin-players-tab">
             <Users className="h-4 w-4 mr-1" />Players
@@ -231,6 +300,66 @@ export default function AdminPanel() {
           )}
         </TabsContent>
 
+
+        <TabsContent value="courses">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+            <h2 className="text-lg font-semibold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>Golf Courses</h2>
+            <div>
+              <input type="file" accept="image/*" capture="environment" ref={fileInputRef}
+                onChange={handleScanPhoto} className="hidden" data-testid="scan-file-input" />
+              <Button onClick={() => fileInputRef.current?.click()} disabled={scanning}
+                className="bg-[#C96A52] hover:bg-[#C96A52]/90 text-white" data-testid="scan-scorecard-btn">
+                {scanning ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Scanning...</> :
+                  <><Camera className="h-4 w-4 mr-1" />Scan Scorecard</>}
+              </Button>
+            </div>
+          </div>
+          {courses.length === 0 ? (
+            <Card className="border-[#E2E3DD] shadow-none">
+              <CardContent className="py-12 text-center">
+                <Camera className="h-10 w-10 text-[#D6D7D2] mx-auto mb-3" />
+                <p className="text-[#6B6E66] mb-2">No courses saved yet</p>
+                <p className="text-sm text-[#6B6E66]">Take a photo of a scorecard to add a course automatically</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {courses.map(c => (
+                <Card key={c.course_id} className="border-[#E2E3DD] shadow-none" data-testid={`course-card-${c.course_id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-[#1B3C35]">{c.course_name}</h3>
+                        <p className="text-sm text-[#6B6E66] mt-1">
+                          {c.num_holes} holes &middot; Par {c.total_par}
+                        </p>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {c.holes?.map(h => (
+                            <span key={h.hole} className="text-[10px] bg-[#E8E9E3] rounded px-1.5 py-0.5 tabular-nums text-[#1B3C35]">
+                              H{h.hole}:P{h.par}{h.yardage > 0 ? `/${h.yardage}y` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <Button size="sm" variant="outline" className="border-[#E2E3DD] text-[#1B3C35]"
+                          onClick={() => { applyCourseToForm(c); setShowDialog(true); }}
+                          data-testid={`use-course-btn-${c.course_id}`}>
+                          <Plus className="h-3.5 w-3.5 mr-1" />Use
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50"
+                          onClick={() => deleteCourse(c.course_id)} data-testid={`delete-course-${c.course_id}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
         <TabsContent value="players">
           <Card className="border-[#E2E3DD] shadow-none">
             <CardHeader className="pb-3">
@@ -290,6 +419,18 @@ export default function AdminPanel() {
               </div>
               <div>
                 <Label className="text-[#1B3C35]">Course Name *</Label>
+                {!editId && courses.length > 0 && (
+                  <Select onValueChange={cid => { const c = courses.find(x => x.course_id === cid); if (c) applyCourseToForm(c); }}>
+                    <SelectTrigger className="mt-1 mb-1 border-[#E2E3DD] bg-[#E8E9E3]/30" data-testid="form-select-course">
+                      <SelectValue placeholder="Load from saved course..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {courses.map(c => (
+                        <SelectItem key={c.course_id} value={c.course_id}>{c.course_name} (Par {c.total_par})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <Input value={form.course_name} onChange={e => setForm({ ...form, course_name: e.target.value })}
                   className="mt-1 border-[#E2E3DD]" placeholder="Augusta National" data-testid="form-course" />
               </div>
@@ -379,6 +520,76 @@ export default function AdminPanel() {
             <Button onClick={handleSave} disabled={saving} className="bg-[#1B3C35] hover:bg-[#1B3C35]/90"
               data-testid="form-save-btn">
               {saving ? 'Saving...' : editId ? 'Update' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Scanned Course Review Dialog */}
+      <Dialog open={showCourseDialog} onOpenChange={setShowCourseDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: 'Outfit' }}>Review Scanned Course</DialogTitle>
+            <DialogDescription>Verify the extracted data and save the course.</DialogDescription>
+          </DialogHeader>
+          {scannedCourse && (
+            <div className="space-y-4 py-2">
+              <div>
+                <Label className="text-[#1B3C35]">Course Name</Label>
+                <Input value={scannedCourse.course_name}
+                  onChange={e => setScannedCourse({ ...scannedCourse, course_name: e.target.value })}
+                  className="mt-1 border-[#E2E3DD]" data-testid="scanned-course-name" />
+              </div>
+              <div>
+                <Label className="text-[#1B3C35] mb-2 block">
+                  Holes ({scannedCourse.holes?.length || 0}) &middot; Total Par: {scannedCourse.holes?.reduce((s, h) => s + (h.par || 0), 0)}
+                </Label>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border border-[#E2E3DD] rounded">
+                    <thead>
+                      <tr className="bg-[#E8E9E3]/50 text-xs text-[#1B3C35] uppercase">
+                        <th className="py-2 px-2 text-center font-bold">Hole</th>
+                        <th className="py-2 px-2 text-center font-bold">Par</th>
+                        <th className="py-2 px-2 text-center font-bold">Yards</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scannedCourse.holes?.map((h, i) => (
+                        <tr key={i} className="border-t border-[#E2E3DD]">
+                          <td className="py-1.5 px-2 text-center text-[#6B6E66] font-bold">{h.hole}</td>
+                          <td className="py-1.5 px-2 text-center">
+                            <Input type="number" min="3" max="6" value={h.par}
+                              onChange={e => {
+                                const updated = [...scannedCourse.holes];
+                                updated[i] = { ...updated[i], par: parseInt(e.target.value) || 3 };
+                                setScannedCourse({ ...scannedCourse, holes: updated });
+                              }}
+                              className="w-16 h-8 text-center border-[#E2E3DD] mx-auto"
+                              data-testid={`scanned-par-${h.hole}`} />
+                          </td>
+                          <td className="py-1.5 px-2 text-center">
+                            <Input type="number" min="0" value={h.yardage || 0}
+                              onChange={e => {
+                                const updated = [...scannedCourse.holes];
+                                updated[i] = { ...updated[i], yardage: parseInt(e.target.value) || 0 };
+                                setScannedCourse({ ...scannedCourse, holes: updated });
+                              }}
+                              className="w-20 h-8 text-center border-[#E2E3DD] mx-auto"
+                              data-testid={`scanned-yardage-${h.hole}`} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCourseDialog(false)}>Cancel</Button>
+            <Button onClick={saveCourse} disabled={saving} className="bg-[#1B3C35] hover:bg-[#1B3C35]/90"
+              data-testid="save-course-btn">
+              {saving ? 'Saving...' : 'Save Course'}
             </Button>
           </DialogFooter>
         </DialogContent>

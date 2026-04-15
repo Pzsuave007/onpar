@@ -4,6 +4,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import json
 from pathlib import Path
 from pydantic import BaseModel
 from typing import List, Optional
@@ -12,6 +13,7 @@ import bcrypt
 import jwt
 import httpx
 from datetime import datetime, timezone, timedelta
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -659,6 +661,91 @@ async def get_player_profile(user_id: str):
         })
     return {"player": user_response(user), "stats": stats, "history": history}
 
+# --- Golf Course Endpoints ---
+SCORECARD_SCAN_PROMPT = """Analyze this golf scorecard image and extract the course information.
+Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
+{
+  "course_name": "Name of the golf course",
+  "num_holes": 18,
+  "holes": [
+    {"hole": 1, "par": 4, "yardage": 380},
+    {"hole": 2, "par": 3, "yardage": 165}
+  ]
+}
+Extract ALL holes visible on the scorecard. For each hole get: hole number, par value, and yardage/distance.
+If yardage is not visible, use 0. If course name is not visible, use "Unknown Course".
+Return ONLY the JSON, nothing else."""
+
+@api_router.post("/courses/scan")
+async def scan_scorecard(request: Request):
+    await get_admin_user(request)
+    body = await request.json()
+    image_base64 = body.get("image_base64", "")
+    if not image_base64:
+        raise HTTPException(status_code=400, detail="Image required")
+    # Strip data URL prefix if present
+    if "base64," in image_base64:
+        image_base64 = image_base64.split("base64,")[1]
+    try:
+        llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
+        chat = LlmChat(
+            api_key=llm_key,
+            session_id=f"scan_{uuid.uuid4().hex[:8]}",
+            system_message="You are a golf scorecard data extractor. Return only valid JSON."
+        ).with_model("openai", "gpt-4o")
+        image_content = ImageContent(image_base64=image_base64)
+        user_msg = UserMessage(text=SCORECARD_SCAN_PROMPT, file_contents=[image_content])
+        response = await chat.send_message(user_msg)
+        # Parse JSON from response
+        text = response.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            text = text.rsplit("```", 1)[0]
+        parsed = json.loads(text)
+        return parsed
+    except json.JSONDecodeError:
+        logger.error(f"AI returned non-JSON: {response[:200] if response else 'empty'}")
+        raise HTTPException(status_code=422, detail="Could not parse scorecard. Try a clearer photo.")
+    except Exception as e:
+        logger.error(f"Scan error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Scan failed: {str(e)}")
+
+@api_router.post("/courses")
+async def save_course(request: Request):
+    user = await get_admin_user(request)
+    body = await request.json()
+    course_id = f"course_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "course_id": course_id,
+        "course_name": body.get("course_name", "Unknown Course"),
+        "num_holes": body.get("num_holes", 18),
+        "holes": body.get("holes", []),
+        "total_par": sum(h.get("par", 0) for h in body.get("holes", [])),
+        "created_by": user["user_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.golf_courses.insert_one(doc)
+    return await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+
+@api_router.get("/courses")
+async def list_courses():
+    return await db.golf_courses.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+@api_router.get("/courses/{course_id}")
+async def get_course(course_id: str):
+    c = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return c
+
+@api_router.delete("/courses/{course_id}")
+async def delete_course(course_id: str, request: Request):
+    await get_admin_user(request)
+    result = await db.golf_courses.delete_one({"course_id": course_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return {"message": "Course deleted"}
+
 # Include router
 app.include_router(api_router)
 
@@ -682,6 +769,7 @@ async def startup():
     await db.scorecards.create_index([("tournament_id", 1), ("user_id", 1)])
     await db.registrations.create_index([("tournament_id", 1), ("user_id", 1)], unique=True)
     await db.registrations.create_index("registration_id", unique=True)
+    await db.golf_courses.create_index("course_id", unique=True)
     logger.info("Database indexes created")
 
 @app.on_event("shutdown")
