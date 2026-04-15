@@ -156,26 +156,22 @@ export default function PublicLeaderboard() {
           {/* Tournament Info */}
           <Card className="border-[#E2E3DD] shadow-none mb-6">
             <CardContent className="p-5">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-bold text-[#1B3C35] truncate" style={{ fontFamily: 'Outfit' }}>
-                    {tournament.name}
-                  </h2>
-                  <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-[#6B6E66]">
-                    <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{tournament.course_name}</span>
-                    <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{tournament.start_date}</span>
-                    <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />{tournament.participant_count || 0} players</span>
-                    {(tournament.num_rounds || 1) > 1 && <span>{tournament.num_rounds} rounds</span>}
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Badge variant="outline" className="capitalize">{tournament.scoring_format}</Badge>
-                  <Badge className={tournament.status === 'active'
-                    ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100'}>
-                    {tournament.status}
-                  </Badge>
-                </div>
+              <h2 className="text-lg sm:text-xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+                {tournament.name}
+              </h2>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm text-[#6B6E66]">
+                <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5 shrink-0" />{tournament.course_name}</span>
+                <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5 shrink-0" />{tournament.start_date}</span>
+                <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5 shrink-0" />{leaderboard.length} players</span>
+                {(tournament.num_rounds || 1) > 1 && <span>{tournament.num_rounds} rounds</span>}
+              </div>
+              <div className="flex gap-2 mt-3">
+                <Badge variant="outline" className="capitalize">{tournament.scoring_format}</Badge>
+                <Badge className={tournament.status === 'active'
+                  ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100'
+                  : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100'}>
+                  {tournament.status}
+                </Badge>
               </div>
             </CardContent>
           </Card>
