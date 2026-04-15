@@ -323,7 +323,7 @@ export default function AdminPanel() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
             <h2 className="text-lg font-semibold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>Golf Courses</h2>
             <div>
-              <input type="file" accept="image/*" capture="environment" ref={fileInputRef}
+              <input type="file" accept="image/*" ref={fileInputRef}
                 onChange={handleScanPhoto} className="hidden" data-testid="scan-file-input" />
               <Button onClick={() => fileInputRef.current?.click()} disabled={scanning}
                 className="bg-[#C96A52] hover:bg-[#C96A52]/90 text-white" data-testid="scan-scorecard-btn">
