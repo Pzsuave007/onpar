@@ -456,7 +456,30 @@ async def add_player_to_tournament(tournament_id: str, request: Request):
     })
     return {"user_id": user_id, "name": name, "registration_id": reg_id}
 
-@api_router.post("/scorecards/keeper")
+@api_router.put("/tournaments/{tournament_id}/player/{user_id}")
+async def rename_player(tournament_id: str, user_id: str, request: Request):
+    await get_admin_user(request)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+    await db.users.update_one({"user_id": user_id}, {"$set": {"name": name}})
+    await db.registrations.update_one(
+        {"tournament_id": tournament_id, "user_id": user_id},
+        {"$set": {"player_name": name}}
+    )
+    await db.scorecards.update_many(
+        {"tournament_id": tournament_id, "user_id": user_id},
+        {"$set": {"player_name": name}}
+    )
+    return {"message": "Player renamed", "name": name}
+
+@api_router.delete("/tournaments/{tournament_id}/player/{user_id}")
+async def remove_player(tournament_id: str, user_id: str, request: Request):
+    await get_admin_user(request)
+    await db.registrations.delete_one({"tournament_id": tournament_id, "user_id": user_id})
+    await db.scorecards.delete_many({"tournament_id": tournament_id, "user_id": user_id})
+    return {"message": "Player removed"}
 async def keeper_submit_scorecard(data: KeeperScoreSubmit, request: Request):
     await get_admin_user(request)
     tournament = await db.tournaments.find_one({"tournament_id": data.tournament_id}, {"_id": 0})
