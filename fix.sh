@@ -1,39 +1,42 @@
 #!/bin/bash
-#================================================================
-# OnPar Live - Update Script
-# USAGE: bash /home/onpar/fix.sh
-#================================================================
+echo "============================================"
+echo "  OnPar Live - Deploying Update"
+echo "============================================"
 
-set -e
+REPO="/home/onparliveuni2"
+PROD="/opt/onpar/backend"
+WEB="/home/onparliveuni2/public_html"
 
-APP_USER="onparliveuni2"
-APP_NAME="onparlive"
-DOMAIN="onparlive.com"
-HOME_DIR="/home/${APP_USER}"
-REPO_DIR="${HOME_DIR}/repo"
-VENV_DIR="${HOME_DIR}/venv"
+echo "[1/5] Git pull..."
+cd "$REPO" && git pull origin main
 
-echo "========= UPDATING OnPar Live ========="
-
-cd "$REPO_DIR" && git pull origin main
-
-source "$VENV_DIR/bin/activate"
-pip install -r "${REPO_DIR}/backend/requirements.txt" -q
+echo "[2/5] Backend dependencies..."
+cd "$PROD"
+source "$PROD/venv/bin/activate"
+pip install -r "$REPO/backend/requirements.txt" --quiet 2>/dev/null
 deactivate
 
-cp -f ${REPO_DIR}/backend/server.py ${HOME_DIR}/backend/
+echo "[3/5] Backend files..."
+cp -f "$REPO/backend/server.py" "$PROD/"
 
-cd "${REPO_DIR}/frontend"
+echo "[4/5] Frontend..."
+cd "$REPO/frontend"
 cat > .env << EOF
-REACT_APP_BACKEND_URL=https://${DOMAIN}
+REACT_APP_BACKEND_URL=https://onparlive.com
 EOF
 yarn install --ignore-engines 2>/dev/null || yarn install --ignore-engines
 yarn build
+rm -rf "$WEB/static/js/" "$WEB/static/css/"
+cp -rf "$REPO/frontend/build/"* "$WEB/"
 
-rm -rf ${HOME_DIR}/frontend/build/*
-cp -rf ${REPO_DIR}/frontend/build/* ${HOME_DIR}/frontend/build/
-chown -R ${APP_USER}:${APP_USER} ${HOME_DIR}
+echo "[5/5] Restart backend..."
+pkill -f "uvicorn.*8005" 2>/dev/null
+sleep 2
+cd "$PROD" && source "$PROD/venv/bin/activate"
+nohup "$PROD/venv/bin/uvicorn" server:app --host 0.0.0.0 --port 8005 --reload > backend.log 2>&1 &
+sleep 5
+curl -s http://localhost:8005/api/ && echo " API: OK" || echo " ERROR: check $PROD/backend.log"
 
-sudo supervisorctl restart ${APP_NAME}
-
-echo "========= DONE ========= https://${DOMAIN}"
+echo "============================================"
+echo "  DONE! https://onparlive.com"
+echo "============================================"
