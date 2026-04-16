@@ -1,17 +1,20 @@
 #!/bin/bash
-# Fix ALL permissions in the chain
-chmod 711 /home/onparliveuni2
-chmod 750 /home/onparliveuni2/public_html
-chown -R onparliveuni2:onparliveuni2 /home/onparliveuni2/public_html
-find /home/onparliveuni2/public_html -type f -exec chmod 644 {} \;
-find /home/onparliveuni2/public_html -type d -exec chmod 755 {} \;
-
-# Verify
-echo "=== Home dir ==="
-ls -la /home/ | grep onparliveuni2
-echo "=== public_html ==="
-ls -la /home/onparliveuni2/ | grep public_html
-echo "=== Files ==="
-ls -la /home/onparliveuni2/public_html/ | head -10
+# Seed admin + promote your account
+curl -s -X POST http://localhost:8005/api/admin/seed
 echo ""
-echo "Reload https://onparlive.com now"
+
+# Promote pzsuave007@gmail.com to admin
+python3 << 'EOF'
+from pymongo import MongoClient
+client = MongoClient("mongodb://localhost:27017")
+db = client["onparlive"]
+result = db.users.update_one(
+    {"email": "pzsuave007@gmail.com"},
+    {"$set": {"role": "admin"}}
+)
+if result.matched_count > 0:
+    print("pzsuave007@gmail.com is now ADMIN!")
+else:
+    print("Account not found. Login first at https://onparlive.com, then run this again.")
+client.close()
+EOF
