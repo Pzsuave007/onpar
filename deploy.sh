@@ -1,31 +1,35 @@
 #!/bin/bash
 #================================================================
 # OnPar Live - Deployment Script
+# Server: AlmaLinux 9 + cPanel/WHM + Apache
 # Domain: onparlive.com
-# Stack: React + FastAPI + MongoDB + Nginx + SSL
 #
 # USAGE:
-#   1. Push code to GitHub
-#   2. SSH into your server
-#   3. Clone the repo: git clone <your-repo-url> /var/www/onparlive
-#   4. Run: bash /var/www/onparlive/deploy.sh
+#   1. SSH into your server as root
+#   2. Clone repo: git clone <repo-url> /opt/onparlive
+#   3. Run: bash /opt/onparlive/deploy.sh
 #
-# REQUIREMENTS:
-#   - Ubuntu 20.04+ server
-#   - MongoDB already installed and running
-#   - Domain onparlive.com pointing to server IP
-#   - Root or sudo access
+# This script:
+#   - Installs Python 3.11, Node.js 20, dependencies
+#   - Builds the React frontend
+#   - Creates systemd service for the backend
+#   - Configures Apache reverse proxy via cPanel includes
+#   - Copies frontend build to cPanel document root
+#   - Sets up .htaccess for SPA routing
 #================================================================
 
 set -e
 
 # ===================== CONFIGURATION =====================
+# CHANGE THESE if needed:
 APP_NAME="onparlive"
 DOMAIN="onparlive.com"
-APP_DIR="/var/www/onparlive"
+CPANEL_USER="onparliv"                          # <-- Your cPanel username
+DOC_ROOT="/home/${CPANEL_USER}/public_html"      # <-- cPanel document root for domain
+APP_DIR="/opt/onparlive"                         # <-- Where the repo is cloned
 BACKEND_PORT=8001
-FRONTEND_BUILD_DIR="$APP_DIR/frontend/build"
 BACKEND_DIR="$APP_DIR/backend"
+FRONTEND_DIR="$APP_DIR/frontend"
 VENV_DIR="$BACKEND_DIR/venv"
 
 # Colors
@@ -48,31 +52,36 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-if ! command -v mongod &> /dev/null && ! systemctl is-active --quiet mongod; then
-    print_warn "MongoDB not found. Installing..."
-    apt-get update
-    apt-get install -y gnupg curl
-    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
-    echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-    apt-get update
-    apt-get install -y mongodb-org
-    systemctl enable mongod
-    systemctl start mongod
-    print_ok "MongoDB installed and started"
-else
-    print_ok "MongoDB found"
+# Verify cPanel user exists
+if ! id "$CPANEL_USER" &>/dev/null; then
+    print_err "cPanel user '$CPANEL_USER' not found."
+    print_err "Edit CPANEL_USER at the top of this script."
+    print_err "Find your user with: ls /home/"
+    exit 1
 fi
+
+# Verify document root
+if [ ! -d "$DOC_ROOT" ]; then
+    print_err "Document root not found: $DOC_ROOT"
+    print_err "Create the domain in cPanel first, then edit DOC_ROOT in this script."
+    exit 1
+fi
+
+print_ok "cPanel user: $CPANEL_USER"
+print_ok "Document root: $DOC_ROOT"
 
 # ===================== SYSTEM DEPENDENCIES =====================
 print_step "Installing system dependencies..."
-apt-get update -qq
-apt-get install -y python3 python3-pip python3-venv nginx certbot python3-certbot-nginx curl git
+
+# Enable required repos
+dnf install -y epel-release 2>/dev/null || true
+dnf install -y python3.11 python3.11-pip python3.11-devel gcc git curl
 
 # Install Node.js 20 if not present
 if ! command -v node &> /dev/null || [[ $(node -v | cut -d'.' -f1 | tr -d 'v') -lt 18 ]]; then
     print_step "Installing Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt-get install -y nodejs
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+    dnf install -y nodejs
     npm install -g yarn
     print_ok "Node.js $(node -v) installed"
 else
@@ -82,11 +91,19 @@ else
     fi
 fi
 
+# Check MongoDB
+if ! command -v mongod &> /dev/null && ! systemctl is-active --quiet mongod; then
+    print_warn "MongoDB not detected. If it's on another server, ignore this."
+    print_warn "If you need to install it, run: bash install_mongodb.sh"
+else
+    print_ok "MongoDB found"
+fi
+
 # ===================== BACKEND SETUP =====================
 print_step "Setting up backend..."
 
 # Create Python virtual environment
-python3 -m venv "$VENV_DIR"
+python3.11 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 
 # Install Python dependencies
@@ -98,48 +115,136 @@ print_ok "Backend dependencies installed"
 
 # Create production .env if not exists
 if [ ! -f "$BACKEND_DIR/.env" ]; then
-    print_step "Creating backend .env file..."
-    JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    print_step "Creating backend .env..."
+    JWT_SECRET=$(python3.11 -c "import secrets; print(secrets.token_hex(32))")
     cat > "$BACKEND_DIR/.env" << EOF
 MONGO_URL=mongodb://localhost:27017
 DB_NAME=onparlive
 CORS_ORIGINS=https://onparlive.com,https://www.onparlive.com
-JWT_SECRET=$JWT_SECRET
+JWT_SECRET=${JWT_SECRET}
 EMERGENT_LLM_KEY=YOUR_EMERGENT_KEY_HERE
 EOF
     print_warn "IMPORTANT: Edit $BACKEND_DIR/.env and set your EMERGENT_LLM_KEY"
-    print_warn "Get it from: Emergent Dashboard -> Profile -> Universal Key"
 else
     print_ok "Backend .env already exists"
-    # Update CORS_ORIGINS if needed
-    if ! grep -q "onparlive.com" "$BACKEND_DIR/.env"; then
-        sed -i "s|CORS_ORIGINS=.*|CORS_ORIGINS=https://onparlive.com,https://www.onparlive.com|" "$BACKEND_DIR/.env"
-        print_ok "Updated CORS_ORIGINS"
-    fi
-    # Update DB_NAME
+    # Ensure CORS and DB are correct
+    sed -i "s|CORS_ORIGINS=.*|CORS_ORIGINS=https://onparlive.com,https://www.onparlive.com|" "$BACKEND_DIR/.env"
     sed -i "s|DB_NAME=.*|DB_NAME=onparlive|" "$BACKEND_DIR/.env"
 fi
 
 deactivate
 
-# ===================== FRONTEND SETUP =====================
+# ===================== FRONTEND BUILD =====================
 print_step "Building frontend..."
 
-cd "$APP_DIR/frontend"
+cd "$FRONTEND_DIR"
 
-# Create production .env
+# Create production .env for React
 cat > .env << EOF
 REACT_APP_BACKEND_URL=https://${DOMAIN}
 EOF
 
-# Install dependencies and build
+# Install and build
 yarn install --frozen-lockfile 2>/dev/null || yarn install
 yarn build
 
-print_ok "Frontend built successfully"
+print_ok "Frontend built"
+
+# ===================== COPY FRONTEND TO CPANEL DOC ROOT =====================
+print_step "Deploying frontend to cPanel document root..."
+
+# Backup existing content
+if [ -d "$DOC_ROOT" ] && [ "$(ls -A $DOC_ROOT 2>/dev/null)" ]; then
+    BACKUP_DIR="/home/${CPANEL_USER}/public_html_backup_$(date +%Y%m%d_%H%M%S)"
+    print_warn "Backing up existing content to $BACKUP_DIR"
+    cp -r "$DOC_ROOT" "$BACKUP_DIR"
+fi
+
+# Copy build files
+rm -rf "${DOC_ROOT:?}"/*
+cp -r "$FRONTEND_DIR/build/"* "$DOC_ROOT/"
+
+# Create .htaccess for SPA routing + API proxy
+cat > "$DOC_ROOT/.htaccess" << 'HTACCESS'
+# OnPar Live - Apache Configuration
+
+# Enable rewrite engine
+RewriteEngine On
+
+# Proxy API requests to FastAPI backend
+RewriteCond %{REQUEST_URI} ^/api/
+RewriteRule ^api/(.*)$ http://127.0.0.1:8001/api/$1 [P,L]
+
+# SPA: Route all non-file requests to index.html
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]
+
+# Cache static assets
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+</IfModule>
+
+# Increase upload size for photo feed
+<IfModule mod_php.c>
+    php_value upload_max_filesize 15M
+    php_value post_max_size 15M
+</IfModule>
+HTACCESS
+
+# Set ownership to cPanel user
+chown -R ${CPANEL_USER}:${CPANEL_USER} "$DOC_ROOT"
+
+print_ok "Frontend deployed to $DOC_ROOT"
+
+# ===================== ENABLE APACHE PROXY MODULES =====================
+print_step "Enabling Apache proxy modules..."
+
+# cPanel uses EasyApache - check if proxy modules are loaded
+if ! httpd -M 2>/dev/null | grep -q proxy_module; then
+    print_warn "Apache proxy modules may not be enabled."
+    print_warn "Go to WHM -> EasyApache 4 -> Currently Installed Packages"
+    print_warn "Enable: mod_proxy, mod_proxy_http"
+    print_warn "Or run: /scripts/rebuildhttpdconf && systemctl restart httpd"
+fi
+
+# Add proxy config via Apache includes (cPanel-safe way)
+APACHE_INCLUDE_DIR="/etc/apache2/conf.d/userdata/ssl/2_4/${CPANEL_USER}/${DOMAIN}"
+mkdir -p "$APACHE_INCLUDE_DIR"
+
+cat > "$APACHE_INCLUDE_DIR/proxy.conf" << EOF
+# OnPar Live API Proxy
+ProxyPreserveHost On
+ProxyPass /api/ http://127.0.0.1:${BACKEND_PORT}/api/
+ProxyPassReverse /api/ http://127.0.0.1:${BACKEND_PORT}/api/
+
+# Increase timeouts for photo uploads
+ProxyTimeout 120
+RequestHeader set X-Forwarded-Proto "https"
+
+# Increase body size for photo uploads
+LimitRequestBody 15728640
+EOF
+
+# Also for non-SSL
+APACHE_INCLUDE_DIR_HTTP="/etc/apache2/conf.d/userdata/std/2_4/${CPANEL_USER}/${DOMAIN}"
+mkdir -p "$APACHE_INCLUDE_DIR_HTTP"
+cp "$APACHE_INCLUDE_DIR/proxy.conf" "$APACHE_INCLUDE_DIR_HTTP/proxy.conf"
+
+# Rebuild Apache config (cPanel way)
+/scripts/rebuildhttpdconf 2>/dev/null || true
+systemctl restart httpd 2>/dev/null || apachectl restart 2>/dev/null || true
+
+print_ok "Apache proxy configured"
 
 # ===================== SYSTEMD SERVICE =====================
-print_step "Creating systemd service..."
+print_step "Creating backend service..."
 
 cat > /etc/systemd/system/${APP_NAME}.service << EOF
 [Unit]
@@ -149,11 +254,11 @@ Wants=mongod.service
 
 [Service]
 Type=simple
-User=www-data
-Group=www-data
+User=${CPANEL_USER}
+Group=${CPANEL_USER}
 WorkingDirectory=${BACKEND_DIR}
 Environment=PATH=${VENV_DIR}/bin:/usr/bin:/bin
-ExecStart=${VENV_DIR}/bin/uvicorn server:app --host 0.0.0.0 --port ${BACKEND_PORT} --workers 2
+ExecStart=${VENV_DIR}/bin/uvicorn server:app --host 127.0.0.1 --port ${BACKEND_PORT} --workers 2
 Restart=always
 RestartSec=5
 
@@ -162,129 +267,70 @@ WantedBy=multi-user.target
 EOF
 
 # Set permissions
-chown -R www-data:www-data "$APP_DIR"
+chown -R ${CPANEL_USER}:${CPANEL_USER} "$APP_DIR"
 
 systemctl daemon-reload
 systemctl enable ${APP_NAME}
 systemctl restart ${APP_NAME}
 
-print_ok "Backend service created and started"
+sleep 2
 
-# ===================== NGINX CONFIGURATION =====================
-print_step "Configuring Nginx..."
-
-cat > /etc/nginx/sites-available/${APP_NAME} << 'NGINX_CONF'
-server {
-    listen 80;
-    server_name onparlive.com www.onparlive.com;
-
-    # Redirect HTTP to HTTPS
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name onparlive.com www.onparlive.com;
-
-    # SSL will be configured by certbot
-    # ssl_certificate /etc/letsencrypt/live/onparlive.com/fullchain.pem;
-    # ssl_certificate_key /etc/letsencrypt/live/onparlive.com/privkey.pem;
-
-    # Frontend (React build)
-    root /var/www/onparlive/frontend/build;
-    index index.html;
-
-    # Max upload size for photo feed
-    client_max_body_size 15M;
-
-    # API proxy to FastAPI backend
-    location /api/ {
-        proxy_pass http://127.0.0.1:8001/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 120s;
-        proxy_send_timeout 120s;
-    }
-
-    # SPA: serve index.html for all frontend routes
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Cache static assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-NGINX_CONF
-
-# Enable site
-ln -sf /etc/nginx/sites-available/${APP_NAME} /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default 2>/dev/null
-
-# Test nginx config
-nginx -t
-
-systemctl reload nginx
-
-print_ok "Nginx configured"
-
-# ===================== SSL CERTIFICATE =====================
-print_step "Setting up SSL with Let's Encrypt..."
-
-# Check if certificate already exists
-if [ -d "/etc/letsencrypt/live/${DOMAIN}" ]; then
-    print_ok "SSL certificate already exists"
-    # Uncomment SSL lines in nginx config
-    sed -i 's|# ssl_certificate|ssl_certificate|g' /etc/nginx/sites-available/${APP_NAME}
-    sed -i 's|# ssl_certificate_key|ssl_certificate_key|g' /etc/nginx/sites-available/${APP_NAME}
-    systemctl reload nginx
+# Check if backend started
+if systemctl is-active --quiet ${APP_NAME}; then
+    print_ok "Backend service running"
 else
-    certbot --nginx -d ${DOMAIN} -d www.${DOMAIN} --non-interactive --agree-tos --email admin@${DOMAIN} --redirect || {
-        print_warn "SSL setup failed. You can run manually later:"
-        print_warn "  sudo certbot --nginx -d ${DOMAIN} -d www.${DOMAIN}"
-    }
+    print_err "Backend failed to start. Check: journalctl -u ${APP_NAME} -n 50"
 fi
 
 # ===================== SEED ADMIN =====================
 print_step "Seeding admin account..."
 sleep 2
-curl -s -X POST http://localhost:${BACKEND_PORT}/api/admin/seed | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('message',''))" 2>/dev/null || print_warn "Admin seed skipped (may already exist)"
+curl -s -X POST http://127.0.0.1:${BACKEND_PORT}/api/admin/seed 2>/dev/null | python3.11 -c "import sys,json; d=json.load(sys.stdin); print(d.get('message',''))" 2>/dev/null || print_warn "Admin seed skipped"
 
-# ===================== FINAL STATUS =====================
+# ===================== FIREWALL =====================
+print_step "Configuring firewall..."
+# Ensure backend port is NOT exposed externally (only accessible via Apache proxy)
+firewall-cmd --remove-port=${BACKEND_PORT}/tcp 2>/dev/null || true
+# Ensure HTTP/HTTPS are open
+firewall-cmd --permanent --add-service=http 2>/dev/null || true
+firewall-cmd --permanent --add-service=https 2>/dev/null || true
+firewall-cmd --reload 2>/dev/null || true
+print_ok "Firewall configured"
+
+# ===================== SSL CHECK =====================
+print_step "Checking SSL..."
+if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+    print_ok "SSL certificate found"
+elif command -v /usr/local/cpanel/bin/autossl &>/dev/null; then
+    print_ok "cPanel AutoSSL is available - SSL should auto-provision"
+    print_warn "If SSL isn't working, go to: cPanel -> SSL/TLS Status -> Run AutoSSL"
+else
+    print_warn "No SSL found. Set it up via: cPanel -> SSL/TLS Status"
+fi
+
+# ===================== DONE =====================
 echo ""
-echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}============================================${NC}"
 echo -e "${GREEN}  OnPar Live - Deployment Complete!${NC}"
-echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}============================================${NC}"
 echo ""
 echo -e "  Website:  ${BLUE}https://${DOMAIN}${NC}"
-echo -e "  Backend:  ${BLUE}http://localhost:${BACKEND_PORT}/api${NC}"
 echo ""
 echo -e "  ${YELLOW}Service commands:${NC}"
-echo -e "    sudo systemctl status ${APP_NAME}    # Check status"
-echo -e "    sudo systemctl restart ${APP_NAME}   # Restart backend"
-echo -e "    sudo journalctl -u ${APP_NAME} -f    # View logs"
+echo -e "    systemctl status ${APP_NAME}       # Check backend"
+echo -e "    systemctl restart ${APP_NAME}      # Restart backend"
+echo -e "    journalctl -u ${APP_NAME} -f       # View logs"
 echo ""
 
-# Check if EMERGENT_LLM_KEY needs to be set
 if grep -q "YOUR_EMERGENT_KEY_HERE" "$BACKEND_DIR/.env" 2>/dev/null; then
     echo -e "  ${RED}ACTION REQUIRED:${NC}"
-    echo -e "  Edit ${BACKEND_DIR}/.env and set your EMERGENT_LLM_KEY"
-    echo -e "  Then restart: sudo systemctl restart ${APP_NAME}"
+    echo -e "  1. Edit: nano ${BACKEND_DIR}/.env"
+    echo -e "  2. Set your EMERGENT_LLM_KEY (for AI scorecard scanner)"
+    echo -e "  3. Restart: systemctl restart ${APP_NAME}"
     echo ""
 fi
 
 echo -e "  ${YELLOW}Admin credentials:${NC}"
-echo -e "    Email:    admin@fairway.com"
-echo -e "    Password: FairwayAdmin123!"
-echo ""
-echo -e "  ${YELLOW}Your personal admin:${NC}"
-echo -e "    Email:    pzsuave007@gmail.com"
-echo -e "    Password: MXmedia007"
+echo -e "    admin@fairway.com / FairwayAdmin123!"
+echo -e "    pzsuave007@gmail.com / MXmedia007"
 echo ""
