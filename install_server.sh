@@ -4,9 +4,10 @@ echo "============================================"
 echo "  OnPar Live - Server Installation"
 echo "============================================"
 
-APP_DIR="/opt/onpar"
-BACKEND_DIR="$APP_DIR/backend"
-REPO="/home/onparliveuni2"
+REPO="/home/onparliveuni2/repo"
+PROD="/opt/onpar/backend"
+
+BACKEND_DIR="/opt/onpar/backend"
 
 # Create production directory
 mkdir -p "$BACKEND_DIR"

@@ -3,7 +3,7 @@ echo "============================================"
 echo "  OnPar Live - Deploying Update"
 echo "============================================"
 
-REPO="/home/onparliveuni2"
+REPO="/home/onparliveuni2/repo"
 PROD="/opt/onpar/backend"
 WEB="/home/onparliveuni2/public_html"
 
