@@ -46,3 +46,12 @@ credentials.json
 
 # DO NOT ignore frontend/build — it must be pushed to GitHub
 # Server copies pre-built files instead of building (low RAM)
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
