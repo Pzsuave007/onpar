@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, UserPlus, Save, Trophy, Check, Share2 } from 'lucide-react';
+import { ArrowLeft, UserPlus, Save, Trophy, Check, Share2, Camera } from 'lucide-react';
+import TournamentFeed from '@/components/TournamentFeed';
 
 function calcStableford(strokes, par) {
   if (strokes === 0) return 0;
@@ -338,6 +339,11 @@ export default function LiveScorer() {
               </CardContent>
             </Card>
           )}
+
+          {/* Photo Feed - Upload from here */}
+          <div className="mb-4">
+            <TournamentFeed tournamentId={tournamentId} canPost={true} />
+          </div>
 
           {/* Live Mini Standings */}
           {standings.length > 0 && (
