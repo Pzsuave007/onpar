@@ -37,19 +37,8 @@ mkdir -p ${PROD_DIR}/frontend/build
 
 # ===================== PYTHON VENV =====================
 echo -e "${BLUE}[2/7]${NC} Setting up Python venv..."
-
-# Use python3.11 if available, fallback to python3
-if command -v python3.11 &> /dev/null; then
-    PYTHON_BIN="python3.11"
-elif command -v python3 &> /dev/null; then
-    PYTHON_BIN="python3"
-else
-    echo -e "${RED}[ERROR]${NC} Python3 not found. Install with: apt install python3.11 python3.11-venv"
-    exit 1
-fi
-echo -e "${GREEN}[OK]${NC} Using: $PYTHON_BIN ($($PYTHON_BIN --version))"
-
-$PYTHON_BIN -m venv "$VENV_DIR"
+echo -e "${GREEN}[OK]${NC} Using: python3 ($(python3 --version))"
+python3 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip -q
 pip install emergentintegrations --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -q
