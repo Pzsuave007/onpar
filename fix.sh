@@ -14,7 +14,7 @@ DOMAIN="onparlive.com"
 REPO_DIR="/home/${APP_USER}/onparlive-repo"
 PROD_DIR="/home/${APP_USER}/onparlive"
 VENV_DIR="${PROD_DIR}/backend/venv"
-BACKEND_PORT=8002
+BACKEND_PORT=8005
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

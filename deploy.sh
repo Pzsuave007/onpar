@@ -20,7 +20,7 @@ APP_NAME="onparlive"
 DOMAIN="onparlive.com"
 REPO_DIR="/home/${APP_USER}/onparlive-repo"
 PROD_DIR="/home/${APP_USER}/onparlive"
-BACKEND_PORT=8002
+BACKEND_PORT=8005
 VENV_DIR="${PROD_DIR}/backend/venv"
 
 RED='\033[0;31m'
