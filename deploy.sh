@@ -15,7 +15,7 @@
 set -e
 
 # ===================== CONFIGURATION =====================
-APP_USER="gradeprophet"
+APP_USER="onparliveuni2"
 APP_NAME="onparlive"
 DOMAIN="onparlive.com"
 REPO_DIR="/home/${APP_USER}/onparlive-repo"
