@@ -246,7 +246,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Flag className="h-4 w-4 text-[#1B3C35]" />
-            <span className="font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>Fairway</span>
+            <span className="font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>OnPar <span className="text-[#C96A52]">Live</span></span>
           </div>
           <div className="flex gap-6 text-sm text-[#6B6E66]">
             <Link to="/leaderboard" className="hover:text-[#1B3C35] transition-colors">Leaderboard</Link>

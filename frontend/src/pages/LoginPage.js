@@ -70,7 +70,7 @@ export default function LoginPage() {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-            Welcome to Fairway
+            Welcome to OnPar Live
           </CardTitle>
           <CardDescription className="text-[#6B6E66]">
             Sign in to manage your golf tournaments

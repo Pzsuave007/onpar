@@ -21,7 +21,7 @@ export default function Navbar() {
           <Link to="/" className="flex items-center gap-2 group" data-testid="nav-logo">
             <Flag className="h-6 w-6 text-[#1B3C35]" />
             <span className="text-xl font-bold text-[#1B3C35] tracking-tight" style={{ fontFamily: 'Outfit' }}>
-              Fairway
+              OnPar <span className="text-[#C96A52]">Live</span>
             </span>
           </Link>
 
