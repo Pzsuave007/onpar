@@ -27,7 +27,7 @@ cd "${REPO_DIR}/frontend"
 cat > .env << EOF
 REACT_APP_BACKEND_URL=https://${DOMAIN}
 EOF
-yarn install --frozen-lockfile 2>/dev/null || yarn install
+yarn install --ignore-engines 2>/dev/null || yarn install --ignore-engines
 yarn build
 
 rm -rf ${HOME_DIR}/frontend/build/*
