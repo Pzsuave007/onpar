@@ -253,7 +253,7 @@ export default function LiveScorer() {
               <CardHeader className="py-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-                    {currentPlayer.player_name} - Round {roundNumber}
+                    {currentPlayer.player_name} - R{roundNumber}
                   </CardTitle>
                   <div className="flex items-center gap-3">
                     <span className={`text-lg font-bold tabular-nums ${played.length > 0 ? scoreClr(toPar) : 'text-[#6B6E66]'}`}>
@@ -263,58 +263,76 @@ export default function LiveScorer() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="pt-0">
-                {/* Compact hole grid - mobile optimized */}
-                <div className="grid grid-cols-9 gap-1 mb-3">
-                  {holes.slice(0, 9).map((h, i) => {
+              <CardContent className="pt-0 px-3">
+                {/* Mobile-first vertical hole list with +/- steppers */}
+                <div className="space-y-2">
+                  {holes.map((h, i) => {
                     const diff = h.strokes > 0 ? h.strokes - h.par : null;
-                    let bg = 'bg-white';
+                    let borderColor = 'border-[#E2E3DD]';
+                    let bgColor = 'bg-white';
+                    let scoreLabel = '';
                     if (diff !== null) {
-                      if (diff < 0) bg = 'bg-[#C96A52]/15';
-                      else if (diff > 0) bg = 'bg-[#1D2D44]/10';
-                      else bg = 'bg-[#4A5D23]/10';
+                      if (diff <= -2) { borderColor = 'border-amber-400'; bgColor = 'bg-amber-50'; scoreLabel = 'Eagle'; }
+                      else if (diff === -1) { borderColor = 'border-[#C96A52]'; bgColor = 'bg-[#C96A52]/10'; scoreLabel = 'Birdie'; }
+                      else if (diff === 0) { borderColor = 'border-[#4A5D23]'; bgColor = 'bg-[#4A5D23]/10'; scoreLabel = 'Par'; }
+                      else if (diff === 1) { borderColor = 'border-[#1D2D44]'; bgColor = 'bg-[#1D2D44]/10'; scoreLabel = 'Bogey'; }
+                      else { borderColor = 'border-[#1D2D44]'; bgColor = 'bg-[#1D2D44]/15'; scoreLabel = `+${diff}`; }
                     }
+                    // Insert front/back 9 separator
+                    const showSeparator = i === 9;
                     return (
-                      <div key={h.hole} className="text-center">
-                        <div className="text-[9px] text-[#6B6E66] font-bold">{h.hole}</div>
-                        <div className="text-[9px] text-[#6B6E66]">P{h.par}</div>
-                        <input type="number" min="0" max="15" value={h.strokes || ''}
-                          onChange={e => updateHole(i, e.target.value)}
-                          className={`w-full h-9 text-center text-sm font-bold rounded border border-[#E2E3DD] ${bg} focus:ring-1 focus:ring-[#1B3C35] focus:outline-none`}
-                          data-testid={`keeper-hole-${h.hole}`} />
+                      <div key={h.hole}>
+                        {showSeparator && (
+                          <div className="text-center text-xs font-bold text-[#6B6E66] uppercase tracking-wider py-2 border-t border-[#E2E3DD] mt-2">
+                            Back 9
+                          </div>
+                        )}
+                        <div className={`flex items-center justify-between rounded-xl border-2 ${borderColor} ${bgColor} px-4 py-3`}
+                          data-testid={`keeper-hole-row-${h.hole}`}>
+                          {/* Hole info */}
+                          <div className="flex items-center gap-3 min-w-[70px]">
+                            <span className="text-lg font-bold text-[#1B3C35] w-7 text-center">{h.hole}</span>
+                            <div className="text-center">
+                              <div className="text-[10px] text-[#6B6E66] uppercase font-bold">Par</div>
+                              <div className="text-sm font-bold text-[#1B3C35]">{h.par}</div>
+                            </div>
+                          </div>
+                          {/* Score label */}
+                          {scoreLabel && (
+                            <span className={`text-xs font-bold ${diff < 0 ? 'text-[#C96A52]' : diff === 0 ? 'text-[#4A5D23]' : 'text-[#1D2D44]'}`}>
+                              {scoreLabel}
+                            </span>
+                          )}
+                          {/* +/- Stepper */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => updateHole(i, Math.max(0, (h.strokes || 0) - 1))}
+                              className="w-12 h-12 rounded-full bg-[#1B3C35] text-white text-2xl font-bold flex items-center justify-center active:scale-95 transition-transform"
+                              data-testid={`keeper-minus-${h.hole}`}>
+                              −
+                            </button>
+                            <span className="text-2xl font-bold text-[#1B3C35] w-10 text-center tabular-nums"
+                              data-testid={`keeper-score-${h.hole}`}>
+                              {h.strokes || '–'}
+                            </span>
+                            <button
+                              onClick={() => updateHole(i, (h.strokes || 0) + 1)}
+                              className="w-12 h-12 rounded-full bg-[#C96A52] text-white text-2xl font-bold flex items-center justify-center active:scale-95 transition-transform"
+                              data-testid={`keeper-plus-${h.hole}`}>
+                              +
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-                {holes.length > 9 && (
-                  <div className="grid grid-cols-9 gap-1 mb-4">
-                    {holes.slice(9).map((h, i) => {
-                      const diff = h.strokes > 0 ? h.strokes - h.par : null;
-                      let bg = 'bg-white';
-                      if (diff !== null) {
-                        if (diff < 0) bg = 'bg-[#C96A52]/15';
-                        else if (diff > 0) bg = 'bg-[#1D2D44]/10';
-                        else bg = 'bg-[#4A5D23]/10';
-                      }
-                      return (
-                        <div key={h.hole} className="text-center">
-                          <div className="text-[9px] text-[#6B6E66] font-bold">{h.hole}</div>
-                          <div className="text-[9px] text-[#6B6E66]">P{h.par}</div>
-                          <input type="number" min="0" max="15" value={h.strokes || ''}
-                            onChange={e => updateHole(i + 9, e.target.value)}
-                            className={`w-full h-9 text-center text-sm font-bold rounded border border-[#E2E3DD] ${bg} focus:ring-1 focus:ring-[#1B3C35] focus:outline-none`}
-                            data-testid={`keeper-hole-${h.hole}`} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
 
-                <div className="flex items-center justify-between pt-3 border-t border-[#E2E3DD]">
-                  <span className="text-xs text-[#6B6E66]">{played.length}/{holes.length} holes</span>
-                  <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" size="sm" onClick={saveCurrentPlayer}
+                <div className="flex items-center justify-between pt-4 mt-4 border-t border-[#E2E3DD]">
+                  <span className="text-sm text-[#6B6E66]">{played.length}/{holes.length} holes</span>
+                  <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12 px-6 text-base" onClick={saveCurrentPlayer}
                     disabled={saving} data-testid="save-keeper-btn">
-                    <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save Score'}
+                    <Save className="h-5 w-5 mr-2" />{saving ? 'Saving...' : 'Save Score'}
                   </Button>
                 </div>
               </CardContent>
