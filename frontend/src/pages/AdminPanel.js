@@ -282,9 +282,11 @@ export default function AdminPanel() {
         <TabsContent value="tournaments">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>All Tournaments</h2>
-            <Button onClick={openCreate} className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" data-testid="create-tournament-btn">
-              <Plus className="h-4 w-4 mr-1" />New Tournament
-            </Button>
+            <Link to="/tournament/new/edit">
+              <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" data-testid="create-tournament-btn">
+                <Plus className="h-4 w-4 mr-1" />New Tournament
+              </Button>
+            </Link>
           </div>
           {tournaments.length === 0 ? (
             <Card className="border-[#E2E3DD] shadow-none">

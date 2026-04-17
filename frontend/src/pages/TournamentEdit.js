@@ -13,15 +13,18 @@ import { ArrowLeft, Save, Lock, Globe } from 'lucide-react';
 export default function TournamentEdit() {
   const { tournamentId } = useParams();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const isNew = tournamentId === 'new';
+  const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: '', course_name: '', start_date: '', end_date: '',
     scoring_format: 'stroke', num_rounds: 1, max_players: 100,
+    num_holes: 18, par_per_hole: [4,3,5,4,4,3,4,5,4,4,3,5,4,4,3,4,5,4],
     description: '', visibility: 'private'
   });
 
   useEffect(() => {
+    if (isNew) return;
     axios.get(`${API}/tournaments/${tournamentId}`).then(res => {
       const t = res.data;
       setForm({
@@ -29,25 +32,31 @@ export default function TournamentEdit() {
         start_date: t.start_date || '', end_date: t.end_date || '',
         scoring_format: t.scoring_format || 'stroke',
         num_rounds: t.num_rounds || 1, max_players: t.max_players || 100,
+        num_holes: t.num_holes || 18, par_per_hole: t.par_per_hole || [],
         description: t.description || '', visibility: t.visibility || 'private'
       });
     }).catch(() => toast.error('Tournament not found'))
       .finally(() => setLoading(false));
-  }, [tournamentId]);
+  }, [tournamentId, isNew]);
 
   const handleSave = async () => {
     if (!form.name.trim()) { toast.error('Name required'); return; }
     setSaving(true);
     try {
-      await axios.put(`${API}/tournaments/${tournamentId}`, {
-        name: form.name, course_name: form.course_name,
-        start_date: form.start_date, end_date: form.end_date,
-        scoring_format: form.scoring_format, num_rounds: form.num_rounds,
-        max_players: form.max_players, description: form.description,
-        visibility: form.visibility
-      });
-      toast.success('Tournament updated!');
-      navigate(-1);
+      if (isNew) {
+        await axios.post(`${API}/tournaments`, form);
+        toast.success('Tournament created!');
+      } else {
+        await axios.put(`${API}/tournaments/${tournamentId}`, {
+          name: form.name, course_name: form.course_name,
+          start_date: form.start_date, end_date: form.end_date,
+          scoring_format: form.scoring_format, num_rounds: form.num_rounds,
+          max_players: form.max_players, description: form.description,
+          visibility: form.visibility
+        });
+        toast.success('Tournament updated!');
+      }
+      navigate('/admin');
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to save');
     } finally {
@@ -73,7 +82,7 @@ export default function TournamentEdit() {
           <ArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="text-xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-          Edit Tournament
+          {isNew ? 'New Tournament' : 'Edit Tournament'}
         </h1>
       </div>
 
@@ -163,7 +172,7 @@ export default function TournamentEdit() {
         <Button onClick={handleSave} disabled={saving}
           className="w-full bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-14 text-base mt-4"
           data-testid="save-tournament-btn">
-          <Save className="h-5 w-5 mr-2" />{saving ? 'Saving...' : 'Save Changes'}
+          <Save className="h-5 w-5 mr-2" />{saving ? 'Saving...' : isNew ? 'Create Tournament' : 'Save Changes'}
         </Button>
       </div>
     </div>

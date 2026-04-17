@@ -121,8 +121,8 @@ export default function PlayRound() {
                 className="border-[#E2E3DD] shadow-none hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
                 onClick={() => setSelectedCourse(c)} data-testid={`select-course-${c.course_id}`}>
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-bold text-[#1B3C35] text-lg">{c.course_name}</h3>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <h3 className="font-bold text-[#1B3C35] text-lg flex-1 min-w-0">{c.course_name}</h3>
                     <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 shrink-0" size="sm">
                       <Flag className="h-4 w-4 mr-1" />Play
                     </Button>
