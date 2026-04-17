@@ -66,11 +66,18 @@ export default function TournamentSettings() {
     }
   };
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
   const removePlayer = async (userId, name) => {
-    if (!window.confirm(`Remove ${name} from the tournament?`)) return;
+    if (confirmDeleteId !== userId) {
+      setConfirmDeleteId(userId);
+      setTimeout(() => setConfirmDeleteId(null), 3000);
+      return;
+    }
     try {
       await axios.delete(`${API}/tournaments/${tournamentId}/player/${userId}`);
       toast.success(`${name} removed`);
+      setConfirmDeleteId(null);
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to remove');
@@ -200,9 +207,11 @@ export default function TournamentSettings() {
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button onClick={() => removePlayer(p.user_id, p.player_name)}
-                          className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-100 active:scale-95"
+                          className={`${confirmDeleteId === p.user_id 
+                            ? 'px-3 h-10 rounded-full bg-red-500 text-white text-xs font-bold' 
+                            : 'w-10 h-10 rounded-full bg-red-50 text-red-500 hover:bg-red-100'} flex items-center justify-center active:scale-95 transition-all`}
                           data-testid={`remove-player-${p.user_id}`}>
-                          <Trash2 className="h-4 w-4" />
+                          {confirmDeleteId === p.user_id ? 'Confirm?' : <Trash2 className="h-4 w-4" />}
                         </button>
                       </div>
                     </div>
