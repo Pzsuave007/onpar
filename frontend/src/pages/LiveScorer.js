@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, UserPlus, Save, Trophy, Check, Share2, Camera, Pencil, Trash2, X, Users } from 'lucide-react';
+import { ArrowLeft, UserPlus, Save, Trophy, Check, Share2, Camera, Pencil, Trash2, X, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import TournamentFeed from '@/components/TournamentFeed';
 
 function calcStableford(strokes, par) {
@@ -41,6 +41,7 @@ export default function LiveScorer() {
   const [addingPlayer, setAddingPlayer] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [editName, setEditName] = useState('');
+  const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
 
   const fetchData = useCallback(async () => {
     try {
@@ -282,96 +283,129 @@ export default function LiveScorer() {
             </div>
           )}
 
-          {/* Scorecard */}
+          {/* Scorecard - One hole at a time */}
           {currentPlayer && (
-            <Card className="border-[#E2E3DD] shadow-none mb-4">
-              <CardHeader className="py-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-                    {currentPlayer.player_name} - R{roundNumber}
-                  </CardTitle>
-                  <div className="flex items-center gap-3">
-                    <span className={`text-lg font-bold tabular-nums ${played.length > 0 ? scoreClr(toPar) : 'text-[#6B6E66]'}`}>
-                      {played.length > 0 ? formatToPar(toPar) : '-'}
-                    </span>
-                    <span className="text-sm text-[#6B6E66] tabular-nums">{totalStrokes || '-'}</span>
-                  </div>
+            <div className="mb-4" data-testid="scorecard-carousel">
+              {/* Player header + total */}
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+                  {currentPlayer.player_name} - R{roundNumber}
+                </p>
+                <div className="flex items-center gap-3">
+                  <span className={`text-lg font-bold tabular-nums ${played.length > 0 ? scoreClr(toPar) : 'text-[#6B6E66]'}`}>
+                    {played.length > 0 ? formatToPar(toPar) : '-'}
+                  </span>
+                  <span className="text-sm text-[#6B6E66] tabular-nums">{totalStrokes || '-'}</span>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-0 px-3">
-                {/* Mobile-first vertical hole list with +/- steppers */}
-                <div className="space-y-2">
-                  {holes.map((h, i) => {
-                    const diff = h.strokes > 0 ? h.strokes - h.par : null;
-                    let borderColor = 'border-[#E2E3DD]';
-                    let bgColor = 'bg-white';
-                    let scoreLabel = '';
-                    if (diff !== null) {
-                      if (diff <= -2) { borderColor = 'border-amber-400'; bgColor = 'bg-amber-50'; scoreLabel = 'Eagle'; }
-                      else if (diff === -1) { borderColor = 'border-[#C96A52]'; bgColor = 'bg-[#C96A52]/10'; scoreLabel = 'Birdie'; }
-                      else if (diff === 0) { borderColor = 'border-[#4A5D23]'; bgColor = 'bg-[#4A5D23]/10'; scoreLabel = 'Par'; }
-                      else if (diff === 1) { borderColor = 'border-[#1D2D44]'; bgColor = 'bg-[#1D2D44]/10'; scoreLabel = 'Bogey'; }
-                      else { borderColor = 'border-[#1D2D44]'; bgColor = 'bg-[#1D2D44]/15'; scoreLabel = `+${diff}`; }
-                    }
-                    // Insert front/back 9 separator
-                    const showSeparator = i === 9;
-                    return (
-                      <div key={h.hole}>
-                        {showSeparator && (
-                          <div className="text-center text-xs font-bold text-[#6B6E66] uppercase tracking-wider py-2 border-t border-[#E2E3DD] mt-2">
-                            Back 9
-                          </div>
-                        )}
-                        <div className={`flex items-center justify-between rounded-xl border-2 ${borderColor} ${bgColor} px-4 py-3`}
-                          data-testid={`keeper-hole-row-${h.hole}`}>
-                          {/* Hole info */}
-                          <div className="flex items-center gap-3 min-w-[70px]">
-                            <span className="text-lg font-bold text-[#1B3C35] w-7 text-center">{h.hole}</span>
-                            <div className="text-center">
-                              <div className="text-[10px] text-[#6B6E66] uppercase font-bold">Par</div>
-                              <div className="text-sm font-bold text-[#1B3C35]">{h.par}</div>
-                            </div>
-                          </div>
-                          {/* Score label */}
-                          {scoreLabel && (
-                            <span className={`text-xs font-bold ${diff < 0 ? 'text-[#C96A52]' : diff === 0 ? 'text-[#4A5D23]' : 'text-[#1D2D44]'}`}>
-                              {scoreLabel}
-                            </span>
-                          )}
-                          {/* +/- Stepper */}
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => updateHole(i, Math.max(0, (h.strokes || 0) - 1))}
-                              className="w-12 h-12 rounded-full bg-[#1B3C35] text-white text-2xl font-bold flex items-center justify-center active:scale-95 transition-transform"
-                              data-testid={`keeper-minus-${h.hole}`}>
-                              −
-                            </button>
-                            <span className="text-2xl font-bold text-[#1B3C35] w-10 text-center tabular-nums"
-                              data-testid={`keeper-score-${h.hole}`}>
-                              {h.strokes || '–'}
-                            </span>
-                            <button
-                              onClick={() => updateHole(i, (h.strokes || 0) + 1)}
-                              className="w-12 h-12 rounded-full bg-[#C96A52] text-white text-2xl font-bold flex items-center justify-center active:scale-95 transition-transform"
-                              data-testid={`keeper-plus-${h.hole}`}>
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+              </div>
 
-                <div className="flex items-center justify-between pt-4 mt-4 border-t border-[#E2E3DD]">
-                  <span className="text-sm text-[#6B6E66]">{played.length}/{holes.length} holes</span>
-                  <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12 px-6 text-base" onClick={saveCurrentPlayer}
-                    disabled={saving} data-testid="save-keeper-btn">
-                    <Save className="h-5 w-5 mr-2" />{saving ? 'Saving...' : 'Save Score'}
+              {/* Hole dots / progress */}
+              <div className="flex gap-1 justify-center mb-4 flex-wrap">
+                {holes.map((h, i) => {
+                  const diff = h.strokes > 0 ? h.strokes - h.par : null;
+                  let dotColor = 'bg-[#E2E3DD]';
+                  if (i === currentHoleIndex) dotColor = 'bg-[#1B3C35] ring-2 ring-[#1B3C35]/30';
+                  else if (diff !== null) {
+                    if (diff < 0) dotColor = 'bg-[#C96A52]';
+                    else if (diff === 0) dotColor = 'bg-[#4A5D23]';
+                    else dotColor = 'bg-[#1D2D44]';
+                  }
+                  return (
+                    <button key={i} onClick={() => setCurrentHoleIndex(i)}
+                      className={`w-5 h-5 rounded-full ${dotColor} text-[8px] font-bold text-white flex items-center justify-center active:scale-90`}
+                      data-testid={`hole-dot-${h.hole}`}>
+                      {h.strokes > 0 ? h.strokes : ''}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Current hole card */}
+              {(() => {
+                const h = holes[currentHoleIndex];
+                if (!h) return null;
+                const diff = h.strokes > 0 ? h.strokes - h.par : null;
+                let bgColor = 'bg-white';
+                let scoreLabel = '';
+                if (diff !== null) {
+                  if (diff <= -2) { bgColor = 'bg-amber-50'; scoreLabel = 'Eagle!'; }
+                  else if (diff === -1) { bgColor = 'bg-[#C96A52]/10'; scoreLabel = 'Birdie!'; }
+                  else if (diff === 0) { bgColor = 'bg-[#4A5D23]/10'; scoreLabel = 'Par'; }
+                  else if (diff === 1) { bgColor = 'bg-[#1D2D44]/10'; scoreLabel = 'Bogey'; }
+                  else { bgColor = 'bg-[#1D2D44]/15'; scoreLabel = `+${diff}`; }
+                }
+                return (
+                  <Card className={`border-[#E2E3DD] shadow-none ${bgColor} transition-colors`}>
+                    <CardContent className="py-8 px-4">
+                      {/* Hole number + par */}
+                      <div className="text-center mb-6">
+                        <p className="text-xs text-[#6B6E66] uppercase font-bold tracking-widest">Hole</p>
+                        <p className="text-5xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>{h.hole}</p>
+                        <p className="text-sm text-[#6B6E66] mt-1">Par {h.par}{h.yards ? ` • ${h.yards} yds` : ''}</p>
+                      </div>
+
+                      {/* Score label */}
+                      {scoreLabel && (
+                        <p className={`text-center text-lg font-bold mb-4 ${diff < 0 ? 'text-[#C96A52]' : diff === 0 ? 'text-[#4A5D23]' : 'text-[#1D2D44]'}`}>
+                          {scoreLabel}
+                        </p>
+                      )}
+
+                      {/* Big +/- stepper */}
+                      <div className="flex items-center justify-center gap-6">
+                        <button
+                          onClick={() => updateHole(currentHoleIndex, Math.max(0, (h.strokes || 0) - 1))}
+                          className="w-16 h-16 rounded-full bg-[#1B3C35] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
+                          data-testid={`keeper-minus-${h.hole}`}>
+                          −
+                        </button>
+                        <span className="text-5xl font-bold text-[#1B3C35] w-16 text-center tabular-nums"
+                          style={{ fontFamily: 'Outfit' }} data-testid={`keeper-score-${h.hole}`}>
+                          {h.strokes || '–'}
+                        </span>
+                        <button
+                          onClick={() => updateHole(currentHoleIndex, (h.strokes || 0) + 1)}
+                          className="w-16 h-16 rounded-full bg-[#C96A52] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
+                          data-testid={`keeper-plus-${h.hole}`}>
+                          +
+                        </button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+
+              {/* Navigation arrows */}
+              <div className="flex items-center justify-between mt-4">
+                <Button variant="outline" className="border-[#E2E3DD] h-12 px-4"
+                  disabled={currentHoleIndex === 0}
+                  onClick={() => setCurrentHoleIndex(currentHoleIndex - 1)}
+                  data-testid="prev-hole-btn">
+                  <ChevronLeft className="h-5 w-5 mr-1" />Prev
+                </Button>
+                <span className="text-sm text-[#6B6E66] tabular-nums">{currentHoleIndex + 1} / {holes.length}</span>
+                {currentHoleIndex < holes.length - 1 ? (
+                  <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12 px-4"
+                    onClick={() => setCurrentHoleIndex(currentHoleIndex + 1)}
+                    data-testid="next-hole-btn">
+                    Next<ChevronRight className="h-5 w-5 ml-1" />
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
+                ) : (
+                  <Button className="bg-[#C96A52] hover:bg-[#C96A52]/90 h-12 px-4" onClick={saveCurrentPlayer}
+                    disabled={saving} data-testid="save-keeper-btn">
+                    <Save className="h-5 w-5 mr-1" />{saving ? 'Saving...' : 'Save'}
+                  </Button>
+                )}
+              </div>
+
+              {/* Quick save (visible when not on last hole) */}
+              {currentHoleIndex < holes.length - 1 && (
+                <Button variant="outline" className="w-full mt-3 border-[#E2E3DD] h-10 text-sm"
+                  onClick={saveCurrentPlayer} disabled={saving} data-testid="quick-save-btn">
+                  <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save Progress'}
+                </Button>
+              )}
+            </div>
           )}
 
           {/* Photo Feed - Upload from here */}
