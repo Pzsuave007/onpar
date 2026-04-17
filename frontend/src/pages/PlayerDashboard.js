@@ -141,21 +141,12 @@ export default function PlayerDashboard() {
             <p className="text-sm font-bold">Play a Round</p>
           </div>
         </Link>
-        {activeTournaments.length > 0 && user?.role === 'admin' ? (
-          <Link to={`/keeper/${activeTournaments[0].tournament_id}`} data-testid="quick-scorer">
-            <div className="bg-[#1B3C35] rounded-xl p-4 text-white active:scale-[0.98] transition-transform">
-              <Radio className="h-6 w-6 mb-2" />
-              <p className="text-sm font-bold">Live Scorer</p>
-            </div>
-          </Link>
-        ) : (
-          <Link to="/challenges" data-testid="quick-challenges">
-            <div className="bg-[#1B3C35] rounded-xl p-4 text-white active:scale-[0.98] transition-transform">
-              <Target className="h-6 w-6 mb-2" />
-              <p className="text-sm font-bold">Challenges</p>
-            </div>
-          </Link>
-        )}
+        <Link to="/challenges" data-testid="quick-challenges">
+          <div className="bg-[#1B3C35] rounded-xl p-4 text-white active:scale-[0.98] transition-transform">
+            <Target className="h-6 w-6 mb-2" />
+            <p className="text-sm font-bold">Challenges</p>
+          </div>
+        </Link>
       </div>
 
       {/* Compact Stats Row */}
