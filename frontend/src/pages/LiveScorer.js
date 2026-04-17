@@ -250,31 +250,16 @@ export default function LiveScorer() {
           {/* Player Tabs */}
           <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
             {roster.map(r => (
-              <div key={r.user_id} className="shrink-0 flex items-center gap-1">
-                <Button
-                  variant={r.user_id === selectedPlayer ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => switchPlayer(r.user_id)}
-                  className={`${r.user_id === selectedPlayer ? 'bg-[#1B3C35] hover:bg-[#1B3C35]/90' : 'border-[#E2E3DD] text-[#1B3C35]'}`}
-                  data-testid={`player-tab-${r.user_id}`}
-                >
-                  {r.player_name}
-                </Button>
-                {r.user_id === selectedPlayer && (
-                  <div className="flex gap-0.5">
-                    <button onClick={() => { setEditingPlayer(r.user_id); setEditName(r.player_name); }}
-                      className="w-8 h-8 rounded-full bg-[#E8E9E3] flex items-center justify-center text-[#6B6E66] hover:bg-[#D6D7D2] active:scale-95"
-                      data-testid={`edit-player-${r.user_id}`}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => removePlayer(r.user_id, r.player_name)}
-                      className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-100 active:scale-95"
-                      data-testid={`remove-player-${r.user_id}`}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
+              <Button
+                key={r.user_id}
+                variant={r.user_id === selectedPlayer ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => switchPlayer(r.user_id)}
+                className={`shrink-0 ${r.user_id === selectedPlayer ? 'bg-[#1B3C35] hover:bg-[#1B3C35]/90' : 'border-[#E2E3DD] text-[#1B3C35]'}`}
+                data-testid={`player-tab-${r.user_id}`}
+              >
+                {r.player_name}
+              </Button>
             ))}
           </div>
 
@@ -436,27 +421,6 @@ export default function LiveScorer() {
             <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={addPlayer} disabled={addingPlayer}
               data-testid="confirm-add-player-btn">
               {addingPlayer ? 'Adding...' : 'Add Player'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Rename Player Dialog */}
-      <Dialog open={!!editingPlayer} onOpenChange={(open) => { if (!open) setEditingPlayer(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Outfit' }}>Edit Player Name</DialogTitle>
-            <DialogDescription>Change the player's name.</DialogDescription>
-          </DialogHeader>
-          <Input value={editName} onChange={e => setEditName(e.target.value)}
-            placeholder="New name" className="border-[#E2E3DD]"
-            data-testid="edit-player-name-input"
-            onKeyDown={e => e.key === 'Enter' && renamePlayer()} />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingPlayer(null)}>Cancel</Button>
-            <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={renamePlayer}
-              data-testid="confirm-rename-btn">
-              Save
             </Button>
           </DialogFooter>
         </DialogContent>

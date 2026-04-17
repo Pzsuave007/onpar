@@ -44,6 +44,11 @@ export default function AdminPanel() {
   const [scannedCourse, setScannedCourse] = useState(null);
   const [showCourseDialog, setShowCourseDialog] = useState(false);
   const fileInputRef = useRef(null);
+  // Player management
+  const [selectedTournamentForPlayers, setSelectedTournamentForPlayers] = useState(null);
+  const [tournamentRoster, setTournamentRoster] = useState([]);
+  const [editingPlayer, setEditingPlayer] = useState(null);
+  const [editPlayerName, setEditPlayerName] = useState('');
 
   const fetchTournaments = () => axios.get(`${API}/tournaments`).then(r => setTournaments(r.data));
   const fetchPlayers = () => axios.get(`${API}/players`).then(r => setPlayers(r.data));
@@ -54,6 +59,35 @@ export default function AdminPanel() {
     fetchPlayers().catch(() => {});
     fetchCourses().catch(() => {});
   }, []);
+
+  const fetchRoster = async (tid) => {
+    try {
+      const res = await axios.get(`${API}/tournaments/${tid}/roster`);
+      setTournamentRoster(res.data);
+    } catch { setTournamentRoster([]); }
+  };
+
+  const renamePlayer = async () => {
+    if (!editingPlayer || !editPlayerName.trim() || !selectedTournamentForPlayers) return;
+    try {
+      await axios.put(`${API}/tournaments/${selectedTournamentForPlayers}/player/${editingPlayer}`, {
+        name: editPlayerName.trim()
+      });
+      toast.success('Name updated!');
+      setEditingPlayer(null);
+      setEditPlayerName('');
+      fetchRoster(selectedTournamentForPlayers);
+    } catch (err) { toast.error(err.response?.data?.detail || 'Failed'); }
+  };
+
+  const removePlayer = async (userId, name) => {
+    if (!window.confirm(`Remove ${name}?`)) return;
+    try {
+      await axios.delete(`${API}/tournaments/${selectedTournamentForPlayers}/player/${userId}`);
+      toast.success(`${name} removed`);
+      fetchRoster(selectedTournamentForPlayers);
+    } catch (err) { toast.error(err.response?.data?.detail || 'Failed'); }
+  };
 
   const openCreate = () => {
     setEditId(null);
@@ -416,45 +450,114 @@ export default function AdminPanel() {
         </TabsContent>
 
         <TabsContent value="players">
-          <Card className="border-[#E2E3DD] shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-semibold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-                Registered Players ({players.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-[#E8E9E3]/40 hover:bg-[#E8E9E3]/40">
-                    <TableHead className="font-bold text-[#1B3C35]">Name</TableHead>
-                    <TableHead className="font-bold text-[#1B3C35]">Email</TableHead>
-                    <TableHead className="font-bold text-[#1B3C35]">Role</TableHead>
-                    <TableHead className="font-bold text-[#1B3C35] text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {players.map(p => (
-                    <TableRow key={p.user_id} data-testid={`player-row-${p.user_id}`}>
-                      <TableCell className="font-medium text-[#1B3C35]">{p.name}</TableCell>
-                      <TableCell className="text-[#6B6E66]">{p.email}</TableCell>
-                      <TableCell>
-                        <Badge variant={p.role === 'admin' ? 'default' : 'secondary'} className="capitalize">
-                          {p.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button size="sm" variant="ghost"
-                          onClick={() => handleRole(p.user_id, p.role === 'admin' ? 'player' : 'admin')}
-                          data-testid={`toggle-role-${p.user_id}`}>
-                          {p.role === 'admin' ? 'Demote' : 'Promote'}
-                        </Button>
-                      </TableCell>
+          {/* Tournament selector */}
+          <div className="mb-4">
+            <Label className="text-[#1B3C35] text-sm font-bold">Select Tournament</Label>
+            <Select value={selectedTournamentForPlayers || ''} onValueChange={(v) => {
+              setSelectedTournamentForPlayers(v);
+              fetchRoster(v);
+            }}>
+              <SelectTrigger className="mt-1 border-[#E2E3DD]" data-testid="player-tournament-select">
+                <SelectValue placeholder="Choose a tournament..." />
+              </SelectTrigger>
+              <SelectContent>
+                {tournaments.map(t => (
+                  <SelectItem key={t.tournament_id} value={t.tournament_id}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {selectedTournamentForPlayers && tournamentRoster.length > 0 && (
+            <div className="space-y-2">
+              {tournamentRoster.map(p => (
+                <Card key={p.user_id} className="border-[#E2E3DD] shadow-none" data-testid={`roster-player-${p.user_id}`}>
+                  <CardContent className="p-3 flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-[#1B3C35] truncate">{p.player_name}</p>
+                      <p className="text-[10px] text-[#6B6E66]">{p.email || 'Guest player'}</p>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button onClick={() => { setEditingPlayer(p.user_id); setEditPlayerName(p.player_name); }}
+                        className="w-9 h-9 rounded-full bg-[#E8E9E3] flex items-center justify-center text-[#6B6E66] hover:bg-[#D6D7D2] active:scale-95"
+                        data-testid={`edit-player-${p.user_id}`}>
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => removePlayer(p.user_id, p.player_name)}
+                        className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-100 active:scale-95"
+                        data-testid={`remove-player-${p.user_id}`}>
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {selectedTournamentForPlayers && tournamentRoster.length === 0 && (
+            <p className="text-[#6B6E66] text-sm py-8 text-center">No players in this tournament yet.</p>
+          )}
+
+          {!selectedTournamentForPlayers && (
+            <p className="text-[#6B6E66] text-sm py-8 text-center">Select a tournament to manage its players.</p>
+          )}
+
+          {/* Rename Dialog */}
+          <Dialog open={!!editingPlayer} onOpenChange={(open) => { if (!open) setEditingPlayer(null); }}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle style={{ fontFamily: 'Outfit' }}>Edit Player Name</DialogTitle>
+                <DialogDescription>Change the player's name.</DialogDescription>
+              </DialogHeader>
+              <Input value={editPlayerName} onChange={e => setEditPlayerName(e.target.value)}
+                placeholder="New name" className="border-[#E2E3DD]"
+                data-testid="edit-player-name-input"
+                onKeyDown={e => e.key === 'Enter' && renamePlayer()} />
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingPlayer(null)}>Cancel</Button>
+                <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={renamePlayer}
+                  data-testid="confirm-rename-btn">Save</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* All Users */}
+          <div className="mt-6">
+            <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">All Registered Users ({players.length})</p>
+            <Card className="border-[#E2E3DD] shadow-none">
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[#E8E9E3]/40 hover:bg-[#E8E9E3]/40">
+                      <TableHead className="font-bold text-[#1B3C35]">Name</TableHead>
+                      <TableHead className="font-bold text-[#1B3C35]">Role</TableHead>
+                      <TableHead className="font-bold text-[#1B3C35] text-right">Action</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {players.map(p => (
+                      <TableRow key={p.user_id} data-testid={`player-row-${p.user_id}`}>
+                        <TableCell className="font-medium text-[#1B3C35]">{p.name}</TableCell>
+                        <TableCell>
+                          <Badge variant={p.role === 'admin' ? 'default' : 'secondary'} className="capitalize">
+                            {p.role}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" variant="ghost"
+                            onClick={() => handleRole(p.user_id, p.role === 'admin' ? 'player' : 'admin')}
+                            data-testid={`toggle-role-${p.user_id}`}>
+                            {p.role === 'admin' ? 'Demote' : 'Promote'}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
 
