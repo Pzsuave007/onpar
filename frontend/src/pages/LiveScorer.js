@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { API } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, UserPlus, Save, Trophy, Check, Share2, Camera, Pencil, Trash2, X } from 'lucide-react';
+import { ArrowLeft, UserPlus, Save, Trophy, Check, Share2, Camera, Pencil, Trash2, X, Users } from 'lucide-react';
 import TournamentFeed from '@/components/TournamentFeed';
 
 function calcStableford(strokes, par) {
@@ -224,6 +224,11 @@ export default function LiveScorer() {
           data-testid="add-player-btn">
           <UserPlus className="h-4 w-4 mr-1" />Add Player
         </Button>
+        <Link to={`/tournament/${tournamentId}/settings`}>
+          <Button size="sm" variant="outline" className="border-[#E2E3DD] text-[#1B3C35]" data-testid="manage-players-btn">
+            <Users className="h-4 w-4 mr-1" />Manage
+          </Button>
+        </Link>
         <Button size="sm" variant="outline" className="border-[#1B3C35] text-[#1B3C35]"
           onClick={() => {
             const url = `${window.location.origin}/leaderboard/${tournamentId}`;
