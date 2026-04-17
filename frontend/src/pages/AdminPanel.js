@@ -357,10 +357,11 @@ export default function AdminPanel() {
                             </Button>
                           </>
                         )}
-                        <Button size="sm" variant="outline" className="border-[#E2E3DD]" onClick={() => openEdit(t)}
-                          data-testid={`edit-btn-${t.tournament_id}`}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
+                        <Link to={`/tournament/${t.tournament_id}/edit`} data-testid={`edit-btn-${t.tournament_id}`}>
+                          <Button size="sm" variant="outline" className="border-[#E2E3DD]">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </Link>
                         <Link to={`/tournament/${t.tournament_id}/settings`} data-testid={`settings-btn-${t.tournament_id}`}>
                           <Button size="sm" variant="outline" className="border-[#E2E3DD] text-[#1B3C35]">
                             <Users className="h-3.5 w-3.5 mr-1" />Players

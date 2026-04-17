@@ -17,6 +17,7 @@ import PlayRound from '@/pages/PlayRound';
 import Tours from '@/pages/Tours';
 import TourDetail from '@/pages/TourDetail';
 import TournamentSettings from '@/pages/TournamentSettings';
+import TournamentEdit from '@/pages/TournamentEdit';
 import '@/App.css';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -55,6 +56,7 @@ function AppRouter() {
         <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
         <Route path="/keeper/:tournamentId" element={<ProtectedRoute adminOnly><LiveScorer /></ProtectedRoute>} />
         <Route path="/tournament/:tournamentId/settings" element={<ProtectedRoute adminOnly><TournamentSettings /></ProtectedRoute>} />
+        <Route path="/tournament/:tournamentId/edit" element={<ProtectedRoute adminOnly><TournamentEdit /></ProtectedRoute>} />
         <Route path="/challenges" element={<Challenges />} />
         <Route path="/challenges/:challengeId" element={<ChallengeDetail />} />
         <Route path="/challenges/join/:inviteCode" element={<Challenges />} />
