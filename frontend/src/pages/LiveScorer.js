@@ -42,6 +42,7 @@ export default function LiveScorer() {
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [editName, setEditName] = useState('');
   const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
+  const [dirtyPlayers, setDirtyPlayers] = useState({});
 
   const fetchData = useCallback(async () => {
     try {
@@ -65,7 +66,15 @@ export default function LiveScorer() {
         const firstId = rosterRes.data[0].user_id;
         setSelectedPlayer(firstId);
         const firstKey = `${firstId}_1`;
-        setHoles(scMap[firstKey] || tRes.data.par_per_hole.map((par, i) => ({ hole: i + 1, par, strokes: 0 })));
+        const baseHoles = tRes.data.par_per_hole.map((par, i) => ({ hole: i + 1, par, strokes: 0 }));
+        const saved = scMap[firstKey];
+        if (saved) {
+          for (const sh of saved) {
+            const idx = baseHoles.findIndex(h => h.hole === sh.hole);
+            if (idx >= 0) baseHoles[idx].strokes = sh.strokes;
+          }
+        }
+        setHoles(baseHoles);
       }
     } catch {
       toast.error('Failed to load tournament');
@@ -82,11 +91,17 @@ export default function LiveScorer() {
   useEffect(() => {
     if (!selectedPlayer || !tournament) return;
     const key = `${selectedPlayer}_${roundNumber}`;
-    if (allPlayerScores[key]) {
-      setHoles(allPlayerScores[key]);
-    } else {
-      setHoles(tournament.par_per_hole.map((par, i) => ({ hole: i + 1, par, strokes: 0 })));
+    const saved = allPlayerScores[key];
+    // Always use tournament's par_per_hole as base, merge saved scores on top
+    const baseHoles = tournament.par_per_hole.map((par, i) => ({ hole: i + 1, par, strokes: 0 }));
+    if (saved) {
+      for (const sh of saved) {
+        const idx = baseHoles.findIndex(h => h.hole === sh.hole);
+        if (idx >= 0) baseHoles[idx].strokes = sh.strokes;
+      }
     }
+    setHoles(baseHoles);
+    setCurrentHoleIndex(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlayer, roundNumber]);
 
@@ -96,6 +111,10 @@ export default function LiveScorer() {
     setHoles(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], strokes: val };
+      // Track this player's holes in allPlayerScores so switching doesn't lose data
+      const key = `${selectedPlayer}_${roundNumber}`;
+      setAllPlayerScores(p => ({ ...p, [key]: updated }));
+      setDirtyPlayers(p => ({ ...p, [selectedPlayer]: true }));
       return updated;
     });
   };
@@ -104,20 +123,45 @@ export default function LiveScorer() {
     if (!selectedPlayer) return;
     setSaving(true);
     try {
+      const key = `${selectedPlayer}_${roundNumber}`;
+      setAllPlayerScores(prev => ({ ...prev, [key]: holes }));
       await axios.post(`${API}/scorecards/keeper`, {
         tournament_id: tournamentId,
         user_id: selectedPlayer,
         round_number: roundNumber,
         holes
       });
-      const key = `${selectedPlayer}_${roundNumber}`;
-      setAllPlayerScores(prev => ({ ...prev, [key]: holes }));
+      setDirtyPlayers(prev => { const n = {...prev}; delete n[selectedPlayer]; return n; });
       toast.success(`Score saved for ${roster.find(r => r.user_id === selectedPlayer)?.player_name}`);
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to save');
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveAllPlayers = async () => {
+    setSaving(true);
+    const currentKey = `${selectedPlayer}_${roundNumber}`;
+    const updatedScores = { ...allPlayerScores, [currentKey]: holes };
+    let saved = 0;
+    let failed = 0;
+    for (const r of roster) {
+      const key = `${r.user_id}_${roundNumber}`;
+      const playerHoles = updatedScores[key];
+      if (!playerHoles || !playerHoles.some(h => h.strokes > 0)) continue;
+      try {
+        await axios.post(`${API}/scorecards/keeper`, {
+          tournament_id: tournamentId, user_id: r.user_id,
+          round_number: roundNumber, holes: playerHoles
+        });
+        saved++;
+      } catch { failed++; }
+    }
+    setDirtyPlayers({});
+    setAllPlayerScores(updatedScores);
+    toast.success(failed > 0 ? `Saved ${saved}, failed ${failed}` : `All scores saved! (${saved} players)`);
+    setSaving(false);
   };
 
   const addPlayer = async () => {
@@ -403,6 +447,14 @@ export default function LiveScorer() {
                 <Button variant="outline" className="w-full mt-3 border-[#E2E3DD] h-10 text-sm"
                   onClick={saveCurrentPlayer} disabled={saving} data-testid="quick-save-btn">
                   <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save Progress'}
+                </Button>
+              )}
+
+              {/* Save All Players */}
+              {Object.keys(dirtyPlayers).length > 0 && (
+                <Button className="w-full mt-3 bg-[#C96A52] hover:bg-[#C96A52]/90 h-12 text-base"
+                  onClick={saveAllPlayers} disabled={saving} data-testid="save-all-btn">
+                  <Save className="h-5 w-5 mr-2" />{saving ? 'Saving...' : `Save All Players (${Object.keys(dirtyPlayers).length})`}
                 </Button>
               )}
             </div>
