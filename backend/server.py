@@ -480,6 +480,8 @@ async def remove_player(tournament_id: str, user_id: str, request: Request):
     await db.registrations.delete_one({"tournament_id": tournament_id, "user_id": user_id})
     await db.scorecards.delete_many({"tournament_id": tournament_id, "user_id": user_id})
     return {"message": "Player removed"}
+
+@api_router.post("/scorecards/keeper")
 async def keeper_submit_scorecard(data: KeeperScoreSubmit, request: Request):
     await get_admin_user(request)
     tournament = await db.tournaments.find_one({"tournament_id": data.tournament_id}, {"_id": 0})
