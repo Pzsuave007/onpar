@@ -1,5 +1,5 @@
 #!/bin/bash
-KEY=$(cat /home/onparliveuni2/public_html/keys.txt | tr -d '[:space:]')
+KEY=$(cat /home/onpaliveruni2/public_html/keys.txt | tr -d '[:space:]')
 sed -i '/EMERGENT_LLM_KEY/d' /opt/onpar/backend/.env
 sed -i '/OPENAI_API_KEY/d' /opt/onpar/backend/.env
 echo "OPENAI_API_KEY=$KEY" >> /opt/onpar/backend/.env
@@ -17,4 +17,4 @@ nohup uvicorn server:app --host 0.0.0.0 --port 8005 --reload > backend.log 2>&1 
 sleep 3
 echo "Key set: $(grep OPENAI_API_KEY /opt/onpar/backend/.env | cut -c1-25)..."
 echo "Done! Now delete the keys file:"
-echo "  rm /home/onparliveuni2/public_html/keys.txt"
+echo "  rm /home/onpaliveruni2/public_html/keys.txt"
