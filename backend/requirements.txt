@@ -9,6 +9,4 @@ python-multipart
 bcrypt
 PyJWT
 pillow
-requests
-starlette
-emergentintegrations
+openai

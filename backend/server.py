@@ -12,9 +12,8 @@ import uuid
 import bcrypt
 import jwt
 import httpx
-import requests as sync_requests
 from datetime import datetime, timezone, timedelta
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+from openai import OpenAI
 from PIL import Image, ImageOps
 import io
 import base64 as b64_module
@@ -28,39 +27,23 @@ db = client[os.environ['DB_NAME']]
 
 JWT_SECRET = os.environ.get('JWT_SECRET', uuid.uuid4().hex)
 
-# --- Object Storage ---
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
-APP_NAME = "fairway-golf"
-_storage_key = None
+# --- Local File Storage ---
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/home/onparliveuni2/public_html/uploads")
+UPLOAD_URL_PREFIX = "/uploads"
 
-def init_storage():
-    global _storage_key
-    if _storage_key:
-        return _storage_key
-    resp = sync_requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
-    return _storage_key
+def save_local_file(subpath: str, data: bytes) -> str:
+    full_path = os.path.join(UPLOAD_DIR, subpath)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    with open(full_path, "wb") as f:
+        f.write(data)
+    return f"{UPLOAD_URL_PREFIX}/{subpath}"
 
-def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = sync_requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-def get_object(path: str):
-    key = init_storage()
-    resp = sync_requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60
-    )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+def read_local_file(subpath: str):
+    full_path = os.path.join(UPLOAD_DIR, subpath)
+    if not os.path.exists(full_path):
+        return None
+    with open(full_path, "rb") as f:
+        return f.read()
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -842,17 +825,22 @@ async def scan_scorecard(request: Request):
     except Exception as e:
         logger.warning(f"Image preprocessing failed: {e}, using original")
     try:
-        llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
-        chat = LlmChat(
-            api_key=llm_key,
-            session_id=f"scan_{uuid.uuid4().hex[:8]}",
-            system_message="You are an expert at reading golf scorecards. You are extremely careful and precise with numbers. You always verify totals add up correctly before returning results. The scorecard image may be rotated - determine orientation first."
-        ).with_model("openai", "gpt-4o")
-        image_content = ImageContent(image_base64=image_base64)
-        user_msg = UserMessage(text=SCORECARD_SCAN_PROMPT, file_contents=[image_content])
-        response = await chat.send_message(user_msg)
-        # Parse JSON from response
-        text = response.strip()
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
+        if not openai_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+        client = OpenAI(api_key=openai_key)
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are an expert at reading golf scorecards. You are extremely careful and precise with numbers. You always verify totals add up correctly before returning results. The scorecard image may be rotated - determine orientation first."},
+                {"role": "user", "content": [
+                    {"type": "text", "text": SCORECARD_SCAN_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+                ]}
+            ],
+            max_tokens=4096
+        )
+        text = response.choices[0].message.content.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[1] if "\n" in text else text[3:]
             text = text.rsplit("```", 1)[0]
@@ -1361,15 +1349,14 @@ async def upload_feed_photo(tournament_id: str, request: Request, file: UploadFi
         content_type = "image/jpeg"
     except Exception:
         pass  # Use original if processing fails
-    # Upload to storage
+    # Save to local storage
     ext = "jpg"
-    storage_path = f"{APP_NAME}/feed/{tournament_id}/{uuid.uuid4().hex}.{ext}"
+    subpath = f"feed/{tournament_id}/{uuid.uuid4().hex}.{ext}"
     try:
-        result = put_object(storage_path, data, content_type)
-        stored_path = result.get("path", storage_path)
+        url_path = save_local_file(subpath, data)
     except Exception as e:
-        logger.error(f"Storage upload failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to upload photo")
+        logger.error(f"File save failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save photo")
     # Save to DB
     photo_id = f"photo_{uuid.uuid4().hex[:12]}"
     doc = {
@@ -1379,7 +1366,8 @@ async def upload_feed_photo(tournament_id: str, request: Request, file: UploadFi
         "player_name": user["name"],
         "picture": user.get("picture"),
         "caption": caption.strip()[:280] if caption else "",
-        "storage_path": stored_path,
+        "storage_path": subpath,
+        "url_path": url_path,
         "content_type": content_type,
         "size": len(data),
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -1415,10 +1403,14 @@ async def serve_feed_photo(photo_id: str):
     if not record:
         raise HTTPException(status_code=404, detail="Photo not found")
     try:
-        data, ct = get_object(record["storage_path"])
-        return Response(content=data, media_type=record.get("content_type", ct))
+        data = read_local_file(record["storage_path"])
+        if not data:
+            raise HTTPException(status_code=404, detail="Photo file not found")
+        return Response(content=data, media_type=record.get("content_type", "image/jpeg"))
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Photo download failed: {e}")
+        logger.error(f"Photo read failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to load photo")
 
 # Include router
@@ -1453,11 +1445,8 @@ async def startup():
     await db.tournament_feed.create_index([("tournament_id", 1), ("created_at", -1)])
     await db.tournament_feed.create_index("photo_id", unique=True)
     logger.info("Database indexes created")
-    try:
-        init_storage()
-        logger.info("Object storage initialized")
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    logger.info(f"Upload directory: {UPLOAD_DIR}")
 
 @app.on_event("shutdown")
 async def shutdown():

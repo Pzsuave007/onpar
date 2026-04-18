@@ -22,6 +22,13 @@ function FeedPhoto({ photo }) {
   const [loadingImg, setLoadingImg] = useState(true);
 
   useEffect(() => {
+    // If photo has a url_path (local storage), use it directly
+    if (photo.url_path) {
+      setImgSrc(photo.url_path);
+      setLoadingImg(false);
+      return;
+    }
+    // Fallback: load via API
     let cancelled = false;
     axios.get(`${API}/feed/photo/${photo.photo_id}`, { responseType: 'blob' })
       .then(res => {
@@ -32,7 +39,7 @@ function FeedPhoto({ photo }) {
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoadingImg(false); });
     return () => { cancelled = true; };
-  }, [photo.photo_id]);
+  }, [photo.photo_id, photo.url_path]);
 
   useEffect(() => {
     return () => { if (imgSrc) URL.revokeObjectURL(imgSrc); };
