@@ -1340,17 +1340,17 @@ async def upload_feed_photo(tournament_id: str, request: Request, file: UploadFi
     try:
         img = Image.open(io.BytesIO(data))
         img = ImageOps.exif_transpose(img)
-        max_dim = 1600
+        max_dim = 1200
         if max(img.width, img.height) > max_dim:
             img.thumbnail((max_dim, max_dim), Image.LANCZOS)
         buf = io.BytesIO()
-        img.save(buf, format='JPEG', quality=80)
+        img.save(buf, format='WEBP', quality=70)
         data = buf.getvalue()
-        content_type = "image/jpeg"
+        content_type = "image/webp"
     except Exception:
         pass  # Use original if processing fails
     # Save to local storage
-    ext = "jpg"
+    ext = "webp" if content_type == "image/webp" else "jpg"
     subpath = f"feed/{tournament_id}/{uuid.uuid4().hex}.{ext}"
     try:
         url_path = save_local_file(subpath, data)
