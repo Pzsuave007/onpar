@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, Target, Trophy, UserPlus, MapPin, Check, Save } from 'lucide-react';
+import { ArrowLeft, Target, Trophy, UserPlus, MapPin, Check, Save, Share2, Copy } from 'lucide-react';
 
 export default function ChallengeDetail() {
   const { challengeId } = useParams();
@@ -145,8 +145,35 @@ export default function ChallengeDetail() {
               )}
             </div>
           </div>
+
+          {/* Share / Invite Link */}
+          {challenge.invite_code && (
+            <div className="mt-4 flex items-center gap-2">
+              <Button className="flex-1 bg-[#C96A52] hover:bg-[#C96A52]/90 h-12"
+                onClick={() => {
+                  const url = `${window.location.origin}/challenges/join/${challenge.invite_code}`;
+                  if (navigator.share) {
+                    navigator.share({ title: challenge.name, text: `Join my Birdie Challenge: ${challenge.name}`, url });
+                  } else {
+                    navigator.clipboard.writeText(url).then(() => toast.success('Invite link copied!'));
+                  }
+                }}
+                data-testid="share-challenge-btn">
+                <Share2 className="h-5 w-5 mr-2" />Share Invite Link
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* How it works note */}
+      {isParticipant && challenge.status === 'active' && (
+        <div className="bg-[#E8E9E3]/50 rounded-xl p-3 mb-6">
+          <p className="text-xs text-[#6B6E66] leading-relaxed">
+            <strong className="text-[#1B3C35]">How birdies count:</strong> Play any course in this challenge using "Play a Round" — birdies are automatically tracked here!
+          </p>
+        </div>
+      )}
 
       {/* Participants Leaderboard */}
       <Card className="border-[#E2E3DD] shadow-none mb-6">
