@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio, Share2, Camera, MapPin, Loader2, Lock, Globe, Copy } from 'lucide-react';
+import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio, Share2, Camera, MapPin, Loader2, Lock, Globe, Copy, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useRef } from 'react';
 
@@ -386,14 +386,19 @@ export default function AdminPanel() {
         <TabsContent value="courses">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
             <h2 className="text-lg font-semibold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>Golf Courses</h2>
-            <div>
+            <div className="flex gap-2">
               <input type="file" accept="image/*" ref={fileInputRef}
                 onChange={handleScanPhoto} className="hidden" data-testid="scan-file-input" />
               <Button onClick={() => fileInputRef.current?.click()} disabled={scanning}
                 className="bg-[#C96A52] hover:bg-[#C96A52]/90 text-white" data-testid="scan-scorecard-btn">
                 {scanning ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Scanning...</> :
-                  <><Camera className="h-4 w-4 mr-1" />Scan Scorecard</>}
+                  <><Camera className="h-4 w-4 mr-1" />Scan</>}
               </Button>
+              <Link to="/courses/search">
+                <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" data-testid="ai-search-btn">
+                  <Search className="h-4 w-4 mr-1" />AI Search
+                </Button>
+              </Link>
             </div>
           </div>
           <p className="text-xs text-[#6B6E66] -mt-2 mb-2">Tip: Take the photo with the scorecard flat and holes going left to right for best results. Always verify the pars after scanning.</p>

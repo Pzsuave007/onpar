@@ -909,6 +909,83 @@ async def delete_course(course_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Course not found")
     return {"message": "Course deleted"}
 
+# --- AI Course Search ---
+COURSE_SEARCH_PROMPT = """Search for the golf scorecard for this course. I need the EXACT data for each hole.
+
+Return ONLY a JSON object in this format (no markdown, no explanation):
+{
+  "course_name": "Full Official Course Name",
+  "location": "City, State",
+  "num_holes": 18,
+  "tees": [
+    {
+      "name": "Blue",
+      "color": "#1E40AF",
+      "holes": [{"hole": 1, "par": 4, "yards": 385}, ...for all holes],
+      "total_par": 72,
+      "total_yardage": 6500
+    },
+    {
+      "name": "White",
+      "color": "#FFFFFF",
+      "holes": [{"hole": 1, "par": 4, "yards": 360}, ...for all holes],
+      "total_par": 72,
+      "total_yardage": 6100
+    },
+    {
+      "name": "Red",
+      "color": "#DC2626",
+      "holes": [{"hole": 1, "par": 4, "yards": 310}, ...for all holes],
+      "total_par": 72,
+      "total_yardage": 5200
+    }
+  ]
+}
+
+Include ALL available tees (Blue/Championship, White/Men's, Red/Women's, Gold/Senior, etc).
+If yardage is not found for a tee, omit that tee.
+Every tee MUST have data for ALL holes.
+Double check that total_par and total_yardage match the sum of individual holes.
+"""
+
+@api_router.post("/courses/search")
+async def ai_search_course(request: Request):
+    await get_admin_user(request)
+    body = await request.json()
+    query = body.get("query", "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Course name required")
+    
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+    
+    try:
+        client = OpenAI(api_key=openai_key)
+        response = client.chat.completions.create(
+            model="gpt-4o-search-preview",
+            web_search_options={"search_context_size": "high"},
+            messages=[
+                {"role": "system", "content": "You are a golf course data expert. You search the web for accurate scorecard data. Always return valid JSON only."},
+                {"role": "user", "content": f"Find the scorecard for: {query}\n\n{COURSE_SEARCH_PROMPT}"}
+            ]
+        )
+        text = response.choices[0].message.content.strip()
+        # Extract JSON
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0].strip()
+        
+        data = json.loads(text)
+        return {"status": "found", "data": data}
+    except json.JSONDecodeError:
+        logger.error(f"AI search returned non-JSON: {text[:200]}")
+        return {"status": "error", "message": "Could not parse course data. Try a more specific name."}
+    except Exception as e:
+        logger.error(f"AI course search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
 @api_router.put("/courses/{course_id}")
 async def update_course(course_id: str, request: Request):
     await get_admin_user(request)
