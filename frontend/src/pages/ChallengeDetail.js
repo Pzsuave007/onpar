@@ -402,6 +402,8 @@ export default function ChallengeDetail() {
 
       {/* Course Progress */}
       {challenge.courses_info?.map(course => {
+        const front9 = course.holes?.slice(0, 9) || [];
+        const back9 = course.holes?.slice(9) || [];
         return (
           <Card key={course.course_id} className="border-[#E2E3DD] shadow-none mb-4">
             <CardHeader className="py-2 px-4">
@@ -410,59 +412,73 @@ export default function ChallengeDetail() {
                 <span className="text-[10px] text-[#6B6E66]">{course.holes?.length} holes</span>
               </div>
             </CardHeader>
-            <CardContent className="px-4 pb-3 pt-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-[#E2E3DD]">
-                      <th className="text-left py-1 px-1 text-[#6B6E66] font-bold w-20">Player</th>
-                      {course.holes?.map(h => (
-                        <th key={h.hole} className="py-1 px-0.5 text-center text-[#6B6E66] font-bold min-w-[1.6rem]">
-                          {h.hole}
-                        </th>
+            <CardContent className="px-3 pb-3 pt-0">
+              {sortedParticipants.map(p => {
+                const birdied = new Set(
+                  (p.birdied_holes || []).filter(b => b.course_id === course.course_id).map(b => b.hole_number)
+                );
+                const birdieCount = birdied.size;
+                return (
+                  <div key={p.user_id} className="py-2.5 border-b border-[#E2E3DD] last:border-0">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-[#1B3C35] truncate">{p.player_name}</span>
+                      <span className="text-xs font-bold text-[#C96A52] tabular-nums">{birdieCount}/{course.holes?.length}</span>
+                    </div>
+                    {/* Front 9 */}
+                    <div className="grid grid-cols-9 gap-1 mb-1">
+                      {front9.map(h => (
+                        birdied.has(h.hole) ? (
+                          canManage ? (
+                            <button key={h.hole} onClick={() => removeBirdie(p.user_id, course.course_id, h.hole)}
+                              className={`aspect-square rounded-full flex items-center justify-center text-[9px] font-bold active:scale-90 transition-all ${
+                                confirmBirdie === `${p.user_id}_${course.course_id}_${h.hole}`
+                                  ? 'bg-red-500 text-white ring-2 ring-red-300'
+                                  : 'bg-[#C96A52] text-white'
+                              }`}>
+                              {confirmBirdie === `${p.user_id}_${course.course_id}_${h.hole}` ? '✕' : h.hole}
+                            </button>
+                          ) : (
+                            <div key={h.hole} className="aspect-square rounded-full bg-[#C96A52] text-white flex items-center justify-center text-[9px] font-bold">
+                              {h.hole}
+                            </div>
+                          )
+                        ) : (
+                          <div key={h.hole} className="aspect-square rounded-full bg-[#E8E9E3] text-[#6B6E66] flex items-center justify-center text-[9px] font-bold">
+                            {h.hole}
+                          </div>
+                        )
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedParticipants.map(p => {
-                      const birdied = new Set(
-                        (p.birdied_holes || []).filter(b => b.course_id === course.course_id).map(b => b.hole_number)
-                      );
-                      return (
-                        <tr key={p.user_id} className="border-b border-[#E2E3DD] last:border-0">
-                          <td className="py-1 px-1 font-medium text-[#1B3C35] truncate max-w-[5rem]">{p.player_name}</td>
-                          {course.holes?.map(h => (
-                            <td key={h.hole} className="py-0.5 px-0.5 text-center">
-                              {birdied.has(h.hole) ? (
-                                canManage ? (
-                                  <button onClick={() => removeBirdie(p.user_id, course.course_id, h.hole)}
-                                    className={`inline-flex items-center justify-center w-5 h-5 rounded-full active:scale-90 transition-all ${
-                                      confirmBirdie === `${p.user_id}_${course.course_id}_${h.hole}`
-                                        ? 'bg-red-500 text-white ring-2 ring-red-300'
-                                        : 'bg-[#C96A52] text-white'
-                                    }`}>
-                                    {confirmBirdie === `${p.user_id}_${course.course_id}_${h.hole}`
-                                      ? <Trash2 className="h-2.5 w-2.5" />
-                                      : <Check className="h-2.5 w-2.5" />}
-                                  </button>
-                                ) : (
-                                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#C96A52] text-white">
-                                    <Check className="h-2.5 w-2.5" />
-                                  </span>
-                                )
-                              ) : (
-                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#E8E9E3] text-[#6B6E66] text-[9px]">
-                                  {h.hole}
-                                </span>
-                              )}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                    </div>
+                    {/* Back 9 */}
+                    {back9.length > 0 && (
+                      <div className="grid grid-cols-9 gap-1">
+                        {back9.map(h => (
+                          birdied.has(h.hole) ? (
+                            canManage ? (
+                              <button key={h.hole} onClick={() => removeBirdie(p.user_id, course.course_id, h.hole)}
+                                className={`aspect-square rounded-full flex items-center justify-center text-[9px] font-bold active:scale-90 transition-all ${
+                                  confirmBirdie === `${p.user_id}_${course.course_id}_${h.hole}`
+                                    ? 'bg-red-500 text-white ring-2 ring-red-300'
+                                    : 'bg-[#C96A52] text-white'
+                                }`}>
+                                {confirmBirdie === `${p.user_id}_${course.course_id}_${h.hole}` ? '✕' : h.hole}
+                              </button>
+                            ) : (
+                              <div key={h.hole} className="aspect-square rounded-full bg-[#C96A52] text-white flex items-center justify-center text-[9px] font-bold">
+                                {h.hole}
+                              </div>
+                            )
+                          ) : (
+                            <div key={h.hole} className="aspect-square rounded-full bg-[#E8E9E3] text-[#6B6E66] flex items-center justify-center text-[9px] font-bold">
+                              {h.hole}
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         );
