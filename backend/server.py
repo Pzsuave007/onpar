@@ -1392,10 +1392,45 @@ async def log_challenge_round(challenge_id: str, request: Request):
             {"challenge_id": challenge_id},
             {"$set": {"winner_id": user_id, "winner_name": player_name, "status": "completed"}}
         )
+
+    # Also persist as a personal round so it shows up in the Player Dashboard
+    # history, stats and handicap (parity with POST /rounds).
+    played = [h for h in holes if h.get("strokes", 0) > 0]
+    round_id = None
+    if played:
+        course = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+        if course:
+            total_strokes = sum(h["strokes"] for h in played)
+            total_par_played = sum(h.get("par", 4) for h in played)
+            player_name = next(
+                (p["player_name"] for p in ch.get("participants", []) if p["user_id"] == user_id),
+                "Unknown"
+            )
+            status = "completed" if len(played) == len(holes) else "in_progress"
+            round_id = f"round_{uuid.uuid4().hex[:12]}"
+            now = datetime.now(timezone.utc).isoformat()
+            await db.rounds.insert_one({
+                "round_id": round_id,
+                "user_id": user_id,
+                "player_name": player_name,
+                "course_id": course_id,
+                "course_name": course["course_name"],
+                "holes": holes,
+                "total_strokes": total_strokes,
+                "total_to_par": total_strokes - total_par_played,
+                "status": status,
+                "completed_holes": len(played),
+                "source": "challenge_log",
+                "challenge_id": challenge_id,
+                "created_at": now,
+                "updated_at": now
+            })
+
     return {
         "new_birdies": new_birdies, "total_birdies_this_round": len(new_birdies),
         "total_completed": total_completed, "total_needed": ch["total_holes"],
-        "won": won
+        "won": won,
+        "round_id": round_id
     }
 
 # --- Virtual Tour Endpoints ---

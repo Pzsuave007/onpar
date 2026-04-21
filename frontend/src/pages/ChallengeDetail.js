@@ -185,10 +185,11 @@ export default function ChallengeDetail() {
               else if (d === 0) dotColor = 'bg-[#4A5D23]';
               else dotColor = 'bg-[#1D2D44]';
             }
+            const dotLabel = d === null ? '' : (d === 0 ? 'E' : d > 0 ? `+${d}` : `${d}`);
             return (
               <button key={i} onClick={() => setCurrentHoleIndex(i)}
-                className={`w-5 h-5 rounded-full ${dotColor} text-[8px] font-bold text-white flex items-center justify-center active:scale-90`}>
-                {hole.strokes > 0 ? hole.strokes : ''}
+                className={`w-6 h-6 rounded-full ${dotColor} text-[9px] font-bold text-white flex items-center justify-center active:scale-90`}>
+                {dotLabel}
               </button>
             );
           })}
@@ -210,23 +211,26 @@ export default function ChallengeDetail() {
               )}
               <div className="flex items-center justify-center gap-6">
                 <button onClick={() => {
-                    const val = Math.max(0, (h.strokes || 0) - 1);
-                    setLogHoles(prev => { const u = [...prev]; u[currentHoleIndex] = { ...u[currentHoleIndex], strokes: val }; return u; });
+                    const next = (h.strokes || 0) === 0 ? Math.max(1, h.par - 1) : Math.max(1, h.strokes - 1);
+                    setLogHoles(prev => { const u = [...prev]; u[currentHoleIndex] = { ...u[currentHoleIndex], strokes: next }; return u; });
                   }}
                   className="w-16 h-16 rounded-full bg-[#1B3C35] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform">
                   −
                 </button>
-                <span className="text-5xl font-bold text-[#1B3C35] w-16 text-center tabular-nums" style={{ fontFamily: 'Outfit' }}>
-                  {h.strokes || '–'}
+                <span className="text-5xl font-bold text-[#1B3C35] w-20 text-center tabular-nums" style={{ fontFamily: 'Outfit' }}>
+                  {(h.strokes || 0) === 0 ? '–' : (h.strokes === h.par ? '0' : (h.strokes > h.par ? `+${h.strokes - h.par}` : `${h.strokes - h.par}`))}
                 </span>
                 <button onClick={() => {
-                    const val = (h.strokes || 0) + 1;
-                    setLogHoles(prev => { const u = [...prev]; u[currentHoleIndex] = { ...u[currentHoleIndex], strokes: val }; return u; });
+                    const next = (h.strokes || 0) === 0 ? h.par : Math.min(15, h.strokes + 1);
+                    setLogHoles(prev => { const u = [...prev]; u[currentHoleIndex] = { ...u[currentHoleIndex], strokes: next }; return u; });
                   }}
                   className="w-16 h-16 rounded-full bg-[#C96A52] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform">
                   +
                 </button>
               </div>
+              <p className="text-center text-[11px] text-[#6B6E66] mt-3">
+                {h.strokes > 0 ? `${h.strokes} strokes` : 'Tap + for par · − for birdie'}
+              </p>
             </CardContent>
           </Card>
         )}

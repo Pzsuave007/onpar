@@ -354,11 +354,12 @@ export default function LiveScorer() {
                     else if (diff === 0) dotColor = 'bg-[#4A5D23]';
                     else dotColor = 'bg-[#1D2D44]';
                   }
+                  const dotLabel = diff === null ? '' : (diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`);
                   return (
                     <button key={i} onClick={() => setCurrentHoleIndex(i)}
-                      className={`w-5 h-5 rounded-full ${dotColor} text-[8px] font-bold text-white flex items-center justify-center active:scale-90`}
+                      className={`w-6 h-6 rounded-full ${dotColor} text-[9px] font-bold text-white flex items-center justify-center active:scale-90`}
                       data-testid={`hole-dot-${h.hole}`}>
-                      {h.strokes > 0 ? h.strokes : ''}
+                      {dotLabel}
                     </button>
                   );
                 })}
@@ -395,25 +396,36 @@ export default function LiveScorer() {
                         </p>
                       )}
 
-                      {/* Big +/- stepper */}
+                      {/* Big +/- stepper (relative-to-par display) */}
                       <div className="flex items-center justify-center gap-6">
                         <button
-                          onClick={() => updateHole(currentHoleIndex, Math.max(0, (h.strokes || 0) - 1))}
+                          onClick={() => {
+                            // When empty, first "−" jumps straight to birdie (par-1)
+                            const next = h.strokes === 0 ? Math.max(1, h.par - 1) : Math.max(1, h.strokes - 1);
+                            updateHole(currentHoleIndex, next);
+                          }}
                           className="w-16 h-16 rounded-full bg-[#1B3C35] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
                           data-testid={`keeper-minus-${h.hole}`}>
                           −
                         </button>
-                        <span className="text-5xl font-bold text-[#1B3C35] w-16 text-center tabular-nums"
+                        <span className="text-5xl font-bold text-[#1B3C35] w-20 text-center tabular-nums"
                           style={{ fontFamily: 'Outfit' }} data-testid={`keeper-score-${h.hole}`}>
-                          {h.strokes || '–'}
+                          {h.strokes === 0 ? '–' : (h.strokes === h.par ? '0' : (h.strokes > h.par ? `+${h.strokes - h.par}` : `${h.strokes - h.par}`))}
                         </span>
                         <button
-                          onClick={() => updateHole(currentHoleIndex, (h.strokes || 0) + 1)}
+                          onClick={() => {
+                            // When empty, first "+" jumps to par
+                            const next = h.strokes === 0 ? h.par : Math.min(15, h.strokes + 1);
+                            updateHole(currentHoleIndex, next);
+                          }}
                           className="w-16 h-16 rounded-full bg-[#C96A52] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
                           data-testid={`keeper-plus-${h.hole}`}>
                           +
                         </button>
                       </div>
+                      <p className="text-center text-[11px] text-[#6B6E66] mt-3">
+                        {h.strokes > 0 ? `${h.strokes} strokes` : 'Tap + for par · − for birdie'}
+                      </p>
                     </CardContent>
                   </Card>
                 );

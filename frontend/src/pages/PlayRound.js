@@ -48,17 +48,26 @@ export default function PlayRound() {
 
   const selectTee = (tee) => {
     setSelectedTee(tee);
-    setHoles(tee.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, yardage: h.yardage || 0 })));
+    setHoles(tee.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, toPar: '', yardage: h.yardage || 0 })));
     setRoundId(null);
     setBirdieAlerts([]);
   };
 
-  const updateHole = (index, strokes) => {
-    const val = parseInt(strokes) || 0;
-    if (val < 0 || val > 15) return;
+  // Relative-to-par entry: user types -1 for birdie, 0 for par, +1 for bogey.
+  // We translate that to absolute strokes for backend compatibility.
+  const updateHole = (index, toParInput) => {
     setHoles(prev => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], strokes: val };
+      const h = updated[index];
+      const raw = String(toParInput).trim();
+      if (raw === '' || raw === '-' || raw === '+') {
+        updated[index] = { ...h, toPar: raw, strokes: 0 };
+        return updated;
+      }
+      const rel = parseInt(raw, 10);
+      if (Number.isNaN(rel) || rel < -4 || rel > 10) return prev;
+      const strokes = Math.max(1, h.par + rel);
+      updated[index] = { ...h, toPar: rel, strokes };
       return updated;
     });
   };
@@ -188,32 +197,34 @@ export default function PlayRound() {
 
   // If no tees structure (old course), use flat holes
   if (!selectedTee && !holes.length && selectedCourse.holes?.length) {
-    const fallbackHoles = selectedCourse.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, yardage: h.yardage || 0 }));
+    const fallbackHoles = selectedCourse.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, toPar: '', yardage: h.yardage || 0 }));
     setHoles(fallbackHoles);
     setSelectedTee({ name: 'Default', color: 'white', holes: selectedCourse.holes });
   }
 
   // Step 3: Scorecard entry
+  const front9 = holes.slice(0, Math.min(9, holes.length));
+  const back9 = holes.length > 9 ? holes.slice(9) : [];
   const played = holes.filter(h => h.strokes > 0);
   const totalStrokes = played.reduce((s, h) => s + h.strokes, 0);
   const totalPar = played.reduce((s, h) => s + h.par, 0);
   const toPar = totalStrokes - totalPar;
   const allFilled = holes.length > 0 && holes.every(h => h.strokes > 0);
-  const front9Done = front9.every(h => h.strokes > 0);
+  const front9Done = front9.length > 0 && front9.every(h => h.strokes > 0);
   const canFinish = allFilled || (front9Done && back9.length > 0);
   const birdieCount = played.filter(h => h.strokes < h.par).length;
   const formatScore = (s) => s === 0 ? 'E' : s > 0 ? `+${s}` : `${s}`;
   const scoreClr = (s) => s < 0 ? 'text-[#C96A52]' : s > 0 ? 'text-[#1D2D44]' : 'text-[#4A5D23]';
-
-  const front9 = holes.slice(0, Math.min(9, holes.length));
-  const back9 = holes.length > 9 ? holes.slice(9) : [];
 
   const HoleGrid = ({ holeSet, label, startIdx }) => {
     const setTotal = holeSet.filter(h => h.strokes > 0).reduce((s, h) => s + h.strokes, 0);
     const setPar = holeSet.reduce((s, h) => s + h.par, 0);
     return (
       <div className="mb-5">
-        <h3 className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">{label}</h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider">{label}</h3>
+          <span className="text-[10px] text-[#6B6E66]">-1 birdie · 0 par · +1 bogey</span>
+        </div>
         <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${holeSet.length}, 1fr) 2.5rem` }}>
           {holeSet.map(h => (
             <div key={`n${h.hole}`} className="text-center text-[9px] text-[#6B6E66] font-bold">{h.hole}</div>
@@ -242,8 +253,10 @@ export default function PlayRound() {
               else bg = 'bg-[#1D2D44]/10 border-[#1D2D44]/30 text-[#1D2D44]';
             }
             return (
-              <input key={h.hole} type="number" min="0" max="15" value={h.strokes || ''}
+              <input key={h.hole} type="number" step="1" min="-4" max="10"
+                value={h.toPar === '' || h.toPar === undefined ? '' : h.toPar}
                 onChange={e => updateHole(idx, e.target.value)}
+                placeholder="–"
                 className={`w-full h-10 text-center text-sm font-bold rounded border ${bg} focus:ring-2 focus:ring-[#1B3C35] focus:outline-none`}
                 data-testid={`play-hole-${h.hole}`} />
             );
