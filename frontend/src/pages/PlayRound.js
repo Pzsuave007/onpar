@@ -195,12 +195,14 @@ export default function PlayRound() {
     );
   }
 
-  // If no tees structure (old course), use flat holes
-  if (!selectedTee && !holes.length && selectedCourse.holes?.length) {
-    const fallbackHoles = selectedCourse.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, toPar: '', yardage: h.yardage || 0 }));
-    setHoles(fallbackHoles);
-    setSelectedTee({ name: 'Default', color: 'white', holes: selectedCourse.holes });
-  }
+  // Auto-initialize scorecard for legacy courses without tees
+  useEffect(() => {
+    if (selectedCourse && !selectedTee && !holes.length && (!selectedCourse.tees || selectedCourse.tees.length === 0) && selectedCourse.holes?.length) {
+      const fallbackHoles = selectedCourse.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, toPar: '', yardage: h.yardage || 0 }));
+      setHoles(fallbackHoles);
+      setSelectedTee({ name: 'Default', color: 'white', holes: selectedCourse.holes });
+    }
+  }, [selectedCourse, selectedTee, holes.length]);
 
   // Step 3: Scorecard entry
   const front9 = holes.slice(0, Math.min(9, holes.length));
