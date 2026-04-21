@@ -493,7 +493,7 @@ async def keeper_submit_scorecard(data: KeeperScoreSubmit, request: Request):
     total_to_par = total_strokes - total_par
     stableford_points = sum(calc_stableford(h["strokes"], h["par"]) for h in played)
     completed = len(played)
-    status = "submitted" if completed == len(holes_data) else "in_progress"
+    status = "submitted" if completed >= 9 else "in_progress"
 
     if existing:
         await db.scorecards.update_one(
@@ -566,7 +566,7 @@ async def submit_scorecard(data: ScorecardSubmit, request: Request):
     total_to_par = total_strokes - total_par
     stableford_points = sum(calc_stableford(h["strokes"], h["par"]) for h in played)
     completed = len(played)
-    status = "submitted" if completed == len(holes_data) else "in_progress"
+    status = "submitted" if completed >= 9 else "in_progress"
 
     if existing:
         await db.scorecards.update_one(
@@ -1105,7 +1105,9 @@ async def save_round(request: Request):
     total_par = sum(h["par"] for h in played)
     total_to_par = total_strokes - total_par
     completed = len(played)
-    status = "completed" if completed == len(holes) else "in_progress"
+    # Allow finishing with 9 holes on 18-hole course
+    finish = body.get("finish", False)
+    status = "completed" if (completed == len(holes) or (finish and completed >= 9)) else "in_progress"
 
     if round_id:
         await db.rounds.update_one({"round_id": round_id}, {"$set": {

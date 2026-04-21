@@ -67,7 +67,7 @@ export default function PlayRound() {
     setSaving(true);
     try {
       const res = await axios.post(`${API}/rounds`, {
-        course_id: selectedCourse.course_id, round_id: roundId, holes
+        course_id: selectedCourse.course_id, round_id: roundId, holes, finish
       });
       setRoundId(res.data.round_id);
       const newBirdies = res.data.new_challenge_birdies || [];
@@ -199,6 +199,8 @@ export default function PlayRound() {
   const totalPar = played.reduce((s, h) => s + h.par, 0);
   const toPar = totalStrokes - totalPar;
   const allFilled = holes.length > 0 && holes.every(h => h.strokes > 0);
+  const front9Done = front9.every(h => h.strokes > 0);
+  const canFinish = allFilled || (front9Done && back9.length > 0);
   const birdieCount = played.filter(h => h.strokes < h.par).length;
   const formatScore = (s) => s === 0 ? 'E' : s > 0 ? `+${s}` : `${s}`;
   const scoreClr = (s) => s < 0 ? 'text-[#C96A52]' : s > 0 ? 'text-[#1D2D44]' : 'text-[#4A5D23]';
@@ -328,8 +330,9 @@ export default function PlayRound() {
               <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save'}
             </Button>
             <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => saveRound(true)}
-              disabled={saving || !allFilled} data-testid="finish-round-btn">
-              <Flag className="h-4 w-4 mr-1" />{allFilled ? 'Finish Round' : `Complete All ${holes.length} Holes`}
+              disabled={saving || !canFinish} data-testid="finish-round-btn">
+              <Flag className="h-4 w-4 mr-1" />
+              {allFilled ? 'Finish Round' : front9Done ? 'Finish 9 Holes' : `${played.length}/${holes.length} Holes`}
             </Button>
           </div>
         </CardContent>
