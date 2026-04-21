@@ -25,6 +25,7 @@ export default function ChallengeDetail() {
 
   // Remove player confirm
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmBirdie, setConfirmBirdie] = useState(null);
 
   const fetchChallenge = async () => {
     try {
@@ -60,6 +61,25 @@ export default function ChallengeDetail() {
       await axios.post(`${API}/challenges/${challengeId}/remove-player`, { user_id: userId });
       toast.success(`${name} removed`);
       setConfirmDeleteId(null);
+      fetchChallenge();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed');
+    }
+  };
+
+  const removeBirdie = async (userId, courseId, holeNumber) => {
+    const key = `${userId}_${courseId}_${holeNumber}`;
+    if (confirmBirdie !== key) {
+      setConfirmBirdie(key);
+      setTimeout(() => setConfirmBirdie(null), 3000);
+      return;
+    }
+    try {
+      await axios.delete(`${API}/challenges/${challengeId}/birdie`, {
+        data: { user_id: userId, course_id: courseId, hole_number: holeNumber }
+      });
+      toast.success('Birdie removed');
+      setConfirmBirdie(null);
       fetchChallenge();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed');
@@ -414,9 +434,22 @@ export default function ChallengeDetail() {
                           {course.holes?.map(h => (
                             <td key={h.hole} className="py-0.5 px-0.5 text-center">
                               {birdied.has(h.hole) ? (
-                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#C96A52] text-white">
-                                  <Check className="h-2.5 w-2.5" />
-                                </span>
+                                canManage ? (
+                                  <button onClick={() => removeBirdie(p.user_id, course.course_id, h.hole)}
+                                    className={`inline-flex items-center justify-center w-5 h-5 rounded-full active:scale-90 transition-all ${
+                                      confirmBirdie === `${p.user_id}_${course.course_id}_${h.hole}`
+                                        ? 'bg-red-500 text-white ring-2 ring-red-300'
+                                        : 'bg-[#C96A52] text-white'
+                                    }`}>
+                                    {confirmBirdie === `${p.user_id}_${course.course_id}_${h.hole}`
+                                      ? <Trash2 className="h-2.5 w-2.5" />
+                                      : <Check className="h-2.5 w-2.5" />}
+                                  </button>
+                                ) : (
+                                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#C96A52] text-white">
+                                    <Check className="h-2.5 w-2.5" />
+                                  </span>
+                                )
                               ) : (
                                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#E8E9E3] text-[#6B6E66] text-[9px]">
                                   {h.hole}

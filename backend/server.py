@@ -1294,6 +1294,26 @@ async def remove_player_from_challenge(challenge_id: str, request: Request):
     await db.challenge_progress.delete_many({"challenge_id": challenge_id, "user_id": target_uid})
     return {"message": "Player removed"}
 
+@api_router.delete("/challenges/{challenge_id}/birdie")
+async def remove_birdie(challenge_id: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    target_uid = body.get("user_id", "")
+    course_id = body.get("course_id", "")
+    hole_number = body.get("hole_number", 0)
+    ch = await db.challenges.find_one({"challenge_id": challenge_id}, {"_id": 0})
+    if not ch:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    if ch.get("created_by") != user["user_id"] and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only the organizer can remove birdies")
+    result = await db.challenge_progress.delete_one({
+        "challenge_id": challenge_id, "user_id": target_uid,
+        "course_id": course_id, "hole_number": hole_number
+    })
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Birdie not found")
+    return {"message": "Birdie removed"}
+
 @api_router.post("/challenges/{challenge_id}/add-player")
 async def add_player_to_challenge(challenge_id: str, request: Request):
     await get_admin_user(request)
