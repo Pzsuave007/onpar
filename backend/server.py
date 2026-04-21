@@ -724,6 +724,87 @@ async def update_profile(request: Request):
     result = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
     return result
 
+@api_router.post("/profile/avatar")
+async def upload_avatar(request: Request, file: UploadFile = File(...)):
+    user = await get_current_user(request)
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image too large (max 5MB)")
+    try:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
+        img.thumbnail((300, 300), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format='WEBP', quality=75)
+        data = buf.getvalue()
+    except Exception:
+        pass
+    subpath = f"avatars/{user['user_id']}.webp"
+    try:
+        url_path = save_local_file(subpath, data)
+    except Exception as e:
+        logger.error(f"Avatar save failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save avatar")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"picture": url_path}})
+    return {"picture": url_path}
+
+@api_router.get("/profile/stats")
+async def get_my_stats(request: Request):
+    user = await get_current_user(request)
+    uid = user["user_id"]
+    # Get all rounds and scorecards
+    rounds = await db.rounds.find({"user_id": uid, "status": "completed"}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    scorecards = await db.scorecards.find({"user_id": uid, "status": "submitted"}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    # Combine all scores for handicap
+    all_scores = []
+    for r in rounds:
+        if r.get("total_to_par") is not None:
+            all_scores.append({"to_par": r["total_to_par"], "strokes": r.get("total_strokes", 0),
+                               "course": r.get("course_name", ""), "date": r.get("created_at", "")})
+    for sc in scorecards:
+        all_scores.append({"to_par": sc["total_to_par"], "strokes": sc["total_strokes"],
+                           "course": "", "date": sc.get("created_at", "")})
+    # Calculate handicap: best 8 of last 20 differentials
+    handicap = None
+    if len(all_scores) >= 3:
+        recent = sorted(all_scores, key=lambda x: x["date"], reverse=True)[:20]
+        differentials = sorted([s["to_par"] for s in recent])
+        n = min(8, len(differentials))
+        best_n = differentials[:n]
+        handicap = round(sum(best_n) / n * 0.96, 1)
+    # Count birdies and eagles
+    total_birdies = 0
+    total_eagles = 0
+    for r in rounds:
+        for h in r.get("holes", []):
+            if h.get("strokes", 0) > 0:
+                diff = h["strokes"] - h.get("par", 0)
+                if diff == -1: total_birdies += 1
+                elif diff <= -2: total_eagles += 1
+    for sc in scorecards:
+        for h in sc.get("holes", []):
+            if h.get("strokes", 0) > 0:
+                diff = h["strokes"] - h.get("par", 0)
+                if diff == -1: total_birdies += 1
+                elif diff <= -2: total_eagles += 1
+    # Challenges
+    challenges = await db.challenges.find(
+        {"participants.user_id": uid}, {"_id": 0, "challenge_id": 1, "name": 1, "status": 1, "total_holes": 1}
+    ).to_list(50)
+    for ch in challenges:
+        count = await db.challenge_progress.count_documents({"challenge_id": ch["challenge_id"], "user_id": uid})
+        ch["completed_holes"] = count
+    return {
+        "total_rounds": len(rounds) + len(scorecards),
+        "avg_to_par": round(sum(s["to_par"] for s in all_scores) / len(all_scores), 1) if all_scores else 0,
+        "best_to_par": min((s["to_par"] for s in all_scores), default=0),
+        "handicap": handicap,
+        "total_birdies": total_birdies,
+        "total_eagles": total_eagles,
+        "recent_rounds": [{"to_par": s["to_par"], "strokes": s["strokes"], "course": s["course"], "date": s["date"]} for s in all_scores[:10]],
+        "challenges": challenges
+    }
+
 # --- Player Profile (Public) ---
 @api_router.get("/players/{user_id}/profile")
 async def get_player_profile(user_id: str):

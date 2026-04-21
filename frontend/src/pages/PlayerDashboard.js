@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, API } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Target, Calendar, Users, UserPlus, UserMinus, CirclePlay, Radio, Camera, ChevronRight, Flame, Flag } from 'lucide-react';
+import { Trophy, Target, Calendar, CirclePlay, Camera, ChevronRight, Flame, MapPin, Loader2, User } from 'lucide-react';
 import { toast } from 'sonner';
 
 function formatToPar(score) {
@@ -20,117 +20,94 @@ function scoreClr(s) {
 }
 
 export default function PlayerDashboard() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
+  const [stats, setStats] = useState(null);
   const [tournaments, setTournaments] = useState([]);
-  const [scorecards, setScorecards] = useState([]);
   const [myRegistrations, setMyRegistrations] = useState([]);
-  const [rounds, setRounds] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarRef = useRef(null);
 
-  const fetchData = async () => {
-    try {
-      const [tRes, sRes, rRes, rnRes] = await Promise.all([
-        axios.get(`${API}/tournaments`),
-        axios.get(`${API}/scorecards/my`),
-        axios.get(`${API}/registrations/my`),
-        axios.get(`${API}/rounds/my`).catch(() => ({ data: [] }))
-      ]);
+  useEffect(() => {
+    Promise.all([
+      axios.get(`${API}/profile/stats`).catch(() => ({ data: null })),
+      axios.get(`${API}/tournaments`).catch(() => ({ data: [] })),
+      axios.get(`${API}/registrations/my`).catch(() => ({ data: [] }))
+    ]).then(([sRes, tRes, rRes]) => {
+      setStats(sRes.data);
       setTournaments(tRes.data);
-      setScorecards(sRes.data);
       setMyRegistrations(rRes.data);
-      setRounds(rnRes.data);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Only images'); return; }
+    setUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await axios.post(`${API}/profile/avatar`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      // Update user context with new picture
+      if (setUser && user) setUser({ ...user, picture: res.data.picture });
+      toast.success('Avatar updated!');
     } catch (err) {
-      toast.error('Failed to load data');
+      toast.error(err.response?.data?.detail || 'Upload failed');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchData(); }, []);
-
-  const handleRegister = async (tournamentId) => {
-    try {
-      await axios.post(`${API}/tournaments/${tournamentId}/register`);
-      toast.success('Registered!');
-      setMyRegistrations(prev => [...prev, tournamentId]);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Registration failed');
-    }
-  };
-
-  const handleUnregister = async (tournamentId) => {
-    try {
-      await axios.delete(`${API}/tournaments/${tournamentId}/unregister`);
-      toast.success('Unregistered');
-      setMyRegistrations(prev => prev.filter(id => id !== tournamentId));
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Cannot unregister');
+      setUploadingAvatar(false);
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-[#1B3C35]">Loading...</div>
+        <Loader2 className="h-6 w-6 text-[#1B3C35] animate-spin" />
       </div>
     );
   }
 
   const activeTournaments = tournaments.filter(t => t.status === 'active');
-  const submitted = scorecards.filter(s => s.status === 'submitted');
-  const totalRounds = submitted.length + rounds.filter(r => r.status === 'completed').length;
-  const avgScore = submitted.length > 0
-    ? Math.round(submitted.reduce((sum, s) => sum + s.total_to_par, 0) / submitted.length)
-    : 0;
-  const bestScore = submitted.length > 0
-    ? Math.min(...submitted.map(s => s.total_to_par))
-    : null;
-
-  // Last round (from casual rounds or scorecards)
-  const lastRound = rounds[0] || null;
-  const lastScorecard = scorecards[0] || null;
-
-  // Find birdies from rounds
-  const recentBirdies = [];
-  for (const r of rounds.slice(0, 5)) {
-    for (const h of (r.holes || [])) {
-      if (h.strokes > 0 && h.strokes < h.par) {
-        recentBirdies.push({
-          course: r.course_name,
-          hole: h.hole,
-          par: h.par,
-          strokes: h.strokes,
-          diff: h.strokes - h.par
-        });
-      }
-    }
-  }
-  // Also from scorecards
-  for (const sc of scorecards.slice(0, 5)) {
-    const t = tournaments.find(t => t.tournament_id === sc.tournament_id);
-    for (const h of (sc.holes || [])) {
-      if (h.strokes > 0 && h.strokes < h.par) {
-        recentBirdies.push({
-          course: t?.course_name || 'Tournament',
-          hole: h.hole,
-          par: h.par,
-          strokes: h.strokes,
-          diff: h.strokes - h.par
-        });
-      }
-    }
-  }
-  const topBirdies = recentBirdies.sort((a, b) => a.diff - b.diff).slice(0, 5);
+  const upcomingTournaments = tournaments.filter(t => t.status === 'upcoming');
+  const initials = (user?.name || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 max-w-lg mx-auto fade-in" data-testid="player-dashboard">
+    <div className="min-h-screen p-4 sm:p-6 max-w-lg mx-auto" data-testid="player-dashboard">
 
-      {/* Greeting */}
-      <div className="mb-5">
-        <p className="text-sm text-[#6B6E66]">Welcome back</p>
-        <h1 className="text-2xl font-bold text-[#1B3C35] tracking-tight" style={{ fontFamily: 'Outfit' }}>
-          {user?.name}
-        </h1>
+      {/* Profile Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="relative">
+          <input type="file" accept="image/*" ref={avatarRef} onChange={handleAvatarUpload} className="hidden" />
+          <button onClick={() => avatarRef.current?.click()}
+            className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#E2E3DD] active:scale-95 transition-transform"
+            data-testid="avatar-btn">
+            {uploadingAvatar ? (
+              <div className="w-full h-full bg-[#E8E9E3] flex items-center justify-center">
+                <Loader2 className="h-5 w-5 text-[#6B6E66] animate-spin" />
+              </div>
+            ) : user?.picture ? (
+              <img src={user.picture} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-[#1B3C35] flex items-center justify-center text-white text-xl font-bold">
+                {initials}
+              </div>
+            )}
+          </button>
+          <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-[#C96A52] rounded-full flex items-center justify-center">
+            <Camera className="h-3 w-3 text-white" />
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold text-[#1B3C35] truncate" style={{ fontFamily: 'Outfit' }}>{user?.name}</h1>
+          <p className="text-xs text-[#6B6E66]">{user?.email}</p>
+          {stats?.handicap !== null && stats?.handicap !== undefined && (
+            <Badge className="mt-1 bg-[#1B3C35] text-white hover:bg-[#1B3C35] text-xs">
+              HCP {stats.handicap}
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Quick Actions */}
@@ -149,115 +126,102 @@ export default function PlayerDashboard() {
         </Link>
       </div>
 
-      {/* Compact Stats Row */}
-      <div className="grid grid-cols-3 gap-2 mb-5">
-        <div className="bg-white rounded-xl border border-[#E2E3DD] p-3 text-center">
-          <p className="text-xl font-bold text-[#1B3C35] tabular-nums" data-testid="stat-rounds">{totalRounds}</p>
-          <p className="text-[10px] text-[#6B6E66] font-bold uppercase">Rounds</p>
-        </div>
-        <div className="bg-white rounded-xl border border-[#E2E3DD] p-3 text-center">
-          <p className={`text-xl font-bold tabular-nums ${scoreClr(avgScore)}`} data-testid="stat-avg">
-            {submitted.length > 0 ? formatToPar(avgScore) : '–'}
-          </p>
-          <p className="text-[10px] text-[#6B6E66] font-bold uppercase">Avg Score</p>
-        </div>
-        <div className="bg-white rounded-xl border border-[#E2E3DD] p-3 text-center">
-          <p className={`text-xl font-bold tabular-nums ${bestScore !== null ? scoreClr(bestScore) : 'text-[#6B6E66]'}`} data-testid="stat-best">
-            {bestScore !== null ? formatToPar(bestScore) : '–'}
-          </p>
-          <p className="text-[10px] text-[#6B6E66] font-bold uppercase">Best</p>
-        </div>
-      </div>
-
-      {/* Last Round */}
-      {(lastRound || lastScorecard) && (
-        <div className="mb-5">
-          <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">Last Round</p>
-          <Card className="border-[#E2E3DD] shadow-none overflow-hidden">
-            <CardContent className="p-0">
-              <div className="bg-[#1B3C35] px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-white font-bold text-sm">{lastRound?.course_name || tournaments.find(t => t.tournament_id === lastScorecard?.tournament_id)?.course_name || 'Course'}</p>
-                  <p className="text-white/60 text-xs">{new Date(lastRound?.created_at || lastScorecard?.created_at || '').toLocaleDateString()}</p>
-                </div>
-                <div className="text-right">
-                  <p className={`text-2xl font-bold tabular-nums ${lastRound ? (lastRound.total_to_par < 0 ? 'text-[#C96A52]' : lastRound.total_to_par > 0 ? 'text-red-300' : 'text-[#4A5D23]') : scoreClr(lastScorecard.total_to_par)} text-white`}>
-                    {formatToPar(lastRound?.total_to_par ?? lastScorecard?.total_to_par ?? 0)}
-                  </p>
-                  <p className="text-white/60 text-xs tabular-nums">{lastRound?.total_strokes || lastScorecard?.total_strokes} strokes</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Stats Grid */}
+      {stats && (
+        <div className="grid grid-cols-4 gap-2 mb-5">
+          <div className="bg-white rounded-xl border border-[#E2E3DD] p-2.5 text-center">
+            <p className="text-lg font-bold text-[#1B3C35] tabular-nums">{stats.total_rounds}</p>
+            <p className="text-[9px] text-[#6B6E66] font-bold uppercase">Rounds</p>
+          </div>
+          <div className="bg-white rounded-xl border border-[#E2E3DD] p-2.5 text-center">
+            <p className={`text-lg font-bold tabular-nums ${scoreClr(stats.avg_to_par)}`}>
+              {stats.total_rounds > 0 ? formatToPar(stats.avg_to_par) : '–'}
+            </p>
+            <p className="text-[9px] text-[#6B6E66] font-bold uppercase">Avg</p>
+          </div>
+          <div className="bg-white rounded-xl border border-[#E2E3DD] p-2.5 text-center">
+            <p className="text-lg font-bold text-[#C96A52] tabular-nums">{stats.total_birdies}</p>
+            <p className="text-[9px] text-[#6B6E66] font-bold uppercase">Birdies</p>
+          </div>
+          <div className="bg-white rounded-xl border border-[#E2E3DD] p-2.5 text-center">
+            <p className="text-lg font-bold text-amber-500 tabular-nums">{stats.total_eagles}</p>
+            <p className="text-[9px] text-[#6B6E66] font-bold uppercase">Eagles</p>
+          </div>
         </div>
       )}
 
       {/* Active Tournaments */}
       {activeTournaments.length > 0 && (
         <div className="mb-5">
-          <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">Active Tournaments</p>
+          <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">
+            <Trophy className="h-3.5 w-3.5 inline mr-1" />Active Tournaments
+          </p>
           <div className="space-y-2">
-            {activeTournaments.map(t => {
-              const isRegistered = myRegistrations.includes(t.tournament_id);
-              return (
-                <Card key={t.tournament_id} className="border-[#E2E3DD] shadow-none"
-                  data-testid={`tournament-card-${t.tournament_id}`}>
-                  <CardContent className="p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm text-[#1B3C35] truncate">{t.name}</p>
-                        <p className="text-xs text-[#6B6E66]">{t.course_name} &middot; {t.participant_count || 0} players</p>
-                      </div>
-                      {!isRegistered ? (
-                        <Button size="sm" className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 shrink-0 h-9"
-                          onClick={() => handleRegister(t.tournament_id)}>
-                          <UserPlus className="h-3.5 w-3.5 mr-1" />Join
-                        </Button>
-                      ) : (
-                        <div className="flex gap-1.5 shrink-0">
-                          {user?.role === 'admin' && (
-                            <Link to={`/keeper/${t.tournament_id}`}>
-                              <Button size="sm" className="bg-[#C96A52] hover:bg-[#C96A52]/90 h-9">
-                                <Radio className="h-3.5 w-3.5 mr-1" />Score
-                              </Button>
-                            </Link>
-                          )}
-                          <Link to={`/leaderboard/${t.tournament_id}`}>
-                            <Button size="sm" variant="outline" className="border-[#E2E3DD] h-9">
-                              <Trophy className="h-3.5 w-3.5" />
-                            </Button>
-                          </Link>
-                        </div>
-                      )}
+            {activeTournaments.map(t => (
+              <Link key={t.tournament_id} to={`/leaderboard/${t.tournament_id}`}>
+                <Card className="border-[#E2E3DD] shadow-none hover:border-[#1B3C35]/30 transition-colors mb-2">
+                  <CardContent className="p-3 flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-[#1B3C35] truncate">{t.name}</p>
+                      <p className="text-xs text-[#6B6E66]">{t.course_name}</p>
                     </div>
+                    <ChevronRight className="h-4 w-4 text-[#6B6E66] shrink-0" />
                   </CardContent>
                 </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* My Challenges */}
+      {stats?.challenges?.length > 0 && (
+        <div className="mb-5">
+          <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">
+            <Target className="h-3.5 w-3.5 inline mr-1" />My Challenges
+          </p>
+          <div className="space-y-2">
+            {stats.challenges.map(ch => {
+              const pct = ch.total_holes > 0 ? Math.round((ch.completed_holes / ch.total_holes) * 100) : 0;
+              return (
+                <Link key={ch.challenge_id} to={`/challenges/${ch.challenge_id}`}>
+                  <Card className="border-[#E2E3DD] shadow-none hover:border-[#1B3C35]/30 transition-colors mb-2">
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="font-bold text-sm text-[#1B3C35] truncate">{ch.name}</p>
+                        <span className="text-xs font-bold text-[#C96A52] tabular-nums shrink-0">{ch.completed_holes}/{ch.total_holes}</span>
+                      </div>
+                      <div className="h-2 bg-[#E8E9E3] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: '#C96A52' }} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
               );
             })}
           </div>
         </div>
       )}
 
-      {/* Recent Birdies */}
-      {topBirdies.length > 0 && (
+      {/* Recent Rounds */}
+      {stats?.recent_rounds?.length > 0 && (
         <div className="mb-5">
           <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">
-            <Flame className="h-3.5 w-3.5 inline mr-1 text-[#C96A52]" />Best Holes
+            <Flame className="h-3.5 w-3.5 inline mr-1 text-[#C96A52]" />Recent Rounds
           </p>
           <div className="space-y-1.5">
-            {topBirdies.map((b, i) => (
+            {stats.recent_rounds.map((r, i) => (
               <div key={i} className="flex items-center justify-between bg-white rounded-lg border border-[#E2E3DD] px-3 py-2.5">
-                <div className="flex items-center gap-3">
-                  <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${b.diff <= -2 ? 'bg-amber-400' : 'bg-[#C96A52]'}`}>
-                    {b.strokes}
-                  </span>
-                  <div>
-                    <p className="text-sm font-medium text-[#1B3C35]">Hole {b.hole}</p>
-                    <p className="text-[10px] text-[#6B6E66]">{b.course} &middot; Par {b.par}</p>
-                  </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#1B3C35] truncate">{r.course || 'Tournament Round'}</p>
+                  <p className="text-[10px] text-[#6B6E66]">
+                    <Calendar className="h-3 w-3 inline mr-0.5" />
+                    {r.date ? new Date(r.date).toLocaleDateString() : ''}
+                    {r.strokes ? ` • ${r.strokes} strokes` : ''}
+                  </p>
                 </div>
-                <span className="text-sm font-bold text-[#C96A52]">
-                  {b.diff <= -2 ? 'Eagle' : 'Birdie'}
+                <span className={`text-lg font-bold tabular-nums ${scoreClr(r.to_par)}`}>
+                  {formatToPar(r.to_par)}
                 </span>
               </div>
             ))}
@@ -266,31 +230,32 @@ export default function PlayerDashboard() {
       )}
 
       {/* Upcoming Tournaments */}
-      {tournaments.filter(t => t.status === 'upcoming').length > 0 && (
+      {upcomingTournaments.length > 0 && (
         <div className="mb-5">
-          <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">Upcoming</p>
-          <div className="space-y-2">
-            {tournaments.filter(t => t.status === 'upcoming').map(t => {
-              const isRegistered = myRegistrations.includes(t.tournament_id);
-              return (
-                <div key={t.tournament_id}
-                  className="flex items-center justify-between bg-white rounded-lg border border-[#E2E3DD] px-3 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#1B3C35] truncate">{t.name}</p>
-                    <p className="text-[10px] text-[#6B6E66]"><Calendar className="h-3 w-3 inline mr-0.5" />{t.start_date}</p>
-                  </div>
-                  {!isRegistered ? (
-                    <Button size="sm" variant="outline" className="border-[#E2E3DD] h-8 text-xs shrink-0"
-                      onClick={() => handleRegister(t.tournament_id)}>
-                      Register
-                    </Button>
-                  ) : (
-                    <Badge className="bg-[#4A5D23]/10 text-[#4A5D23] border-[#4A5D23]/20 hover:bg-[#4A5D23]/10 text-[10px]">Registered</Badge>
-                  )}
+          <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">
+            <Calendar className="h-3.5 w-3.5 inline mr-1" />Upcoming
+          </p>
+          <div className="space-y-1.5">
+            {upcomingTournaments.map(t => (
+              <div key={t.tournament_id} className="flex items-center justify-between bg-white rounded-lg border border-[#E2E3DD] px-3 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#1B3C35] truncate">{t.name}</p>
+                  <p className="text-[10px] text-[#6B6E66]">{t.start_date} • {t.course_name}</p>
                 </div>
-              );
-            })}
+                <Badge className="bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-50 text-[10px]">
+                  {myRegistrations.includes(t.tournament_id) ? 'Joined' : 'Open'}
+                </Badge>
+              </div>
+            ))}
           </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {stats?.total_rounds === 0 && activeTournaments.length === 0 && (
+        <div className="text-center py-12">
+          <User className="h-10 w-10 text-[#D6D7D2] mx-auto mb-3" />
+          <p className="text-sm text-[#6B6E66]">No rounds yet. Start playing to see your stats!</p>
         </div>
       )}
     </div>
