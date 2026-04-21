@@ -134,7 +134,7 @@ export default function ChallengeDetail() {
   const sortedParticipants = [...participants].sort((a, b) => (b.completed_holes || 0) - (a.completed_holes || 0));
 
   // Add Round view (full page carousel)
-  if (showAddRound) {
+  if (showAddRound === true) {
     const h = logHoles[currentHoleIndex];
     const diff = h?.strokes > 0 ? h.strokes - h.par : null;
     let bgColor = 'bg-white';
