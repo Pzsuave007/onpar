@@ -1,15 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth, API } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, Target, Trophy, UserPlus, MapPin, Check, Save, Share2, Copy } from 'lucide-react';
+import { ArrowLeft, Target, Trophy, MapPin, Check, Save, Share2, CirclePlay, Trash2, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 
 export default function ChallengeDetail() {
   const { challengeId } = useParams();
@@ -17,13 +14,17 @@ export default function ChallengeDetail() {
   const { user } = useAuth();
   const [challenge, setChallenge] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showLog, setShowLog] = useState(false);
-  const [logCourseId, setLogCourseId] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Add Round state
+  const [showAddRound, setShowAddRound] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState(null);
   const [logPlayerId, setLogPlayerId] = useState('');
   const [logHoles, setLogHoles] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [showAddPlayer, setShowAddPlayer] = useState(false);
-  const [newPlayerName, setNewPlayerName] = useState('');
+  const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
+
+  // Remove player confirm
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const fetchChallenge = async () => {
     try {
@@ -49,42 +50,46 @@ export default function ChallengeDetail() {
     }
   };
 
-  const addPlayer = async () => {
-    if (!newPlayerName.trim()) return;
+  const removePlayer = async (userId, name) => {
+    if (confirmDeleteId !== userId) {
+      setConfirmDeleteId(userId);
+      setTimeout(() => setConfirmDeleteId(null), 3000);
+      return;
+    }
     try {
-      await axios.post(`${API}/challenges/${challengeId}/add-player`, { name: newPlayerName.trim() });
-      toast.success(`${newPlayerName.trim()} added!`);
-      setNewPlayerName('');
-      setShowAddPlayer(false);
+      await axios.post(`${API}/challenges/${challengeId}/remove-player`, { user_id: userId });
+      toast.success(`${name} removed`);
+      setConfirmDeleteId(null);
       fetchChallenge();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed');
     }
   };
 
-  const openLogRound = (courseId, playerId) => {
+  const openAddRound = (courseId, playerId) => {
     const courseInfo = challenge.courses_info.find(c => c.course_id === courseId);
     if (!courseInfo) return;
-    setLogCourseId(courseId);
+    setSelectedCourse(courseInfo);
     setLogPlayerId(playerId || user?.user_id || '');
     setLogHoles(courseInfo.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0 })));
-    setShowLog(true);
+    setCurrentHoleIndex(0);
+    setShowAddRound(true);
   };
 
   const submitRound = async () => {
     setSaving(true);
     try {
       const res = await axios.post(`${API}/challenges/${challengeId}/log-round`, {
-        course_id: logCourseId, user_id: logPlayerId, holes: logHoles
+        course_id: selectedCourse.course_id, user_id: logPlayerId, holes: logHoles
       });
       if (res.data.won) {
         toast.success('CHALLENGE COMPLETE! Winner!', { duration: 5000 });
-      } else if (res.data.new_birdies.length > 0) {
+      } else if (res.data.new_birdies?.length > 0) {
         toast.success(`${res.data.new_birdies.length} new birdie(s)! (${res.data.total_completed}/${res.data.total_needed})`);
       } else {
         toast.info('Round logged. No new birdies this time.');
       }
-      setShowLog(false);
+      setShowAddRound(false);
       fetchChallenge();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to log round');
@@ -102,100 +107,270 @@ export default function ChallengeDetail() {
   }
 
   const isParticipant = challenge.participants?.some(p => p.user_id === user?.user_id);
+  const isCreator = challenge.created_by === user?.user_id;
   const isAdmin = user?.role === 'admin';
+  const canManage = isCreator || isAdmin;
   const participants = challenge.participants || [];
   const sortedParticipants = [...participants].sort((a, b) => (b.completed_holes || 0) - (a.completed_holes || 0));
 
+  // Add Round view (full page carousel)
+  if (showAddRound) {
+    const h = logHoles[currentHoleIndex];
+    const diff = h?.strokes > 0 ? h.strokes - h.par : null;
+    let bgColor = 'bg-white';
+    let scoreLabel = '';
+    if (diff !== null) {
+      if (diff <= -2) { bgColor = 'bg-amber-50'; scoreLabel = 'Eagle!'; }
+      else if (diff === -1) { bgColor = 'bg-[#C96A52]/10'; scoreLabel = 'Birdie!'; }
+      else if (diff === 0) { bgColor = 'bg-[#4A5D23]/10'; scoreLabel = 'Par'; }
+      else if (diff === 1) { bgColor = 'bg-[#1D2D44]/10'; scoreLabel = 'Bogey'; }
+      else if (diff > 1) { bgColor = 'bg-[#1D2D44]/15'; scoreLabel = `+${diff}`; }
+    }
+
+    return (
+      <div className="min-h-screen p-4 sm:p-6 max-w-lg mx-auto" data-testid="add-round-view">
+        <div className="flex items-center gap-3 mb-4">
+          <button onClick={() => setShowAddRound(false)}
+            className="w-10 h-10 rounded-full bg-[#E8E9E3] flex items-center justify-center text-[#1B3C35] active:scale-95">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-lg font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>Add Round</h1>
+            <p className="text-xs text-[#6B6E66]">{selectedCourse?.course_name}</p>
+          </div>
+        </div>
+
+        {/* Player selector for organizer */}
+        {canManage && participants.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
+            {participants.map(p => (
+              <Button key={p.user_id} size="sm"
+                variant={logPlayerId === p.user_id ? 'default' : 'outline'}
+                className={`shrink-0 ${logPlayerId === p.user_id ? 'bg-[#1B3C35]' : 'border-[#E2E3DD]'}`}
+                onClick={() => setLogPlayerId(p.user_id)}>
+                {p.player_name}
+              </Button>
+            ))}
+          </div>
+        )}
+
+        {/* Hole dots */}
+        <div className="flex gap-1 justify-center mb-4 flex-wrap">
+          {logHoles.map((hole, i) => {
+            const d = hole.strokes > 0 ? hole.strokes - hole.par : null;
+            let dotColor = 'bg-[#E2E3DD]';
+            if (i === currentHoleIndex) dotColor = 'bg-[#1B3C35] ring-2 ring-[#1B3C35]/30';
+            else if (d !== null) {
+              if (d < 0) dotColor = 'bg-[#C96A52]';
+              else if (d === 0) dotColor = 'bg-[#4A5D23]';
+              else dotColor = 'bg-[#1D2D44]';
+            }
+            return (
+              <button key={i} onClick={() => setCurrentHoleIndex(i)}
+                className={`w-5 h-5 rounded-full ${dotColor} text-[8px] font-bold text-white flex items-center justify-center active:scale-90`}>
+                {hole.strokes > 0 ? hole.strokes : ''}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Current hole */}
+        {h && (
+          <Card className={`border-[#E2E3DD] shadow-none ${bgColor} transition-colors`}>
+            <CardContent className="py-8 px-4">
+              <div className="text-center mb-6">
+                <p className="text-xs text-[#6B6E66] uppercase font-bold tracking-widest">Hole</p>
+                <p className="text-5xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>{h.hole}</p>
+                <p className="text-sm text-[#6B6E66] mt-1">Par {h.par}</p>
+              </div>
+              {scoreLabel && (
+                <p className={`text-center text-lg font-bold mb-4 ${diff < 0 ? 'text-[#C96A52]' : diff === 0 ? 'text-[#4A5D23]' : 'text-[#1D2D44]'}`}>
+                  {scoreLabel}
+                </p>
+              )}
+              <div className="flex items-center justify-center gap-6">
+                <button onClick={() => {
+                    const val = Math.max(0, (h.strokes || 0) - 1);
+                    setLogHoles(prev => { const u = [...prev]; u[currentHoleIndex] = { ...u[currentHoleIndex], strokes: val }; return u; });
+                  }}
+                  className="w-16 h-16 rounded-full bg-[#1B3C35] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform">
+                  −
+                </button>
+                <span className="text-5xl font-bold text-[#1B3C35] w-16 text-center tabular-nums" style={{ fontFamily: 'Outfit' }}>
+                  {h.strokes || '–'}
+                </span>
+                <button onClick={() => {
+                    const val = (h.strokes || 0) + 1;
+                    setLogHoles(prev => { const u = [...prev]; u[currentHoleIndex] = { ...u[currentHoleIndex], strokes: val }; return u; });
+                  }}
+                  className="w-16 h-16 rounded-full bg-[#C96A52] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform">
+                  +
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-4">
+          <Button variant="outline" className="border-[#E2E3DD] h-12 px-4"
+            disabled={currentHoleIndex === 0}
+            onClick={() => setCurrentHoleIndex(currentHoleIndex - 1)}>
+            <ChevronLeft className="h-5 w-5 mr-1" />Prev
+          </Button>
+          <span className="text-sm text-[#6B6E66] tabular-nums">{currentHoleIndex + 1} / {logHoles.length}</span>
+          {currentHoleIndex < logHoles.length - 1 ? (
+            <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12 px-4"
+              onClick={() => setCurrentHoleIndex(currentHoleIndex + 1)}>
+              Next<ChevronRight className="h-5 w-5 ml-1" />
+            </Button>
+          ) : (
+            <Button className="bg-[#C96A52] hover:bg-[#C96A52]/90 h-12 px-4" onClick={submitRound}
+              disabled={saving}>
+              <Save className="h-5 w-5 mr-1" />{saving ? 'Saving...' : 'Submit'}
+            </Button>
+          )}
+        </div>
+
+        {/* Birdies detected */}
+        {logHoles.some(hole => hole.strokes > 0 && hole.strokes < hole.par) && (
+          <div className="mt-4 bg-[#C96A52]/10 rounded-xl p-3 text-center">
+            <p className="text-sm font-bold text-[#C96A52]">
+              Birdies: Holes {logHoles.filter(hole => hole.strokes > 0 && hole.strokes < hole.par).map(hole => hole.hole).join(', ')}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Main challenge view
   return (
-    <div className="min-h-screen p-4 sm:p-6 md:p-8 max-w-5xl mx-auto fade-in" data-testid="challenge-detail">
-      <Button variant="ghost" size="sm" className="mb-4 text-[#6B6E66]" onClick={() => navigate('/challenges')}>
-        <ArrowLeft className="h-4 w-4 mr-1" /> Back to Challenges
-      </Button>
+    <div className="min-h-screen p-4 sm:p-6 max-w-lg mx-auto" data-testid="challenge-detail">
+      <button onClick={() => navigate('/challenges')}
+        className="flex items-center gap-1 text-sm text-[#6B6E66] mb-4 active:scale-95">
+        <ArrowLeft className="h-4 w-4" /> Challenges
+      </button>
 
       {/* Header */}
-      <Card className="border-[#E2E3DD] shadow-none mb-6">
-        <CardContent className="p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-                {challenge.name}
-              </h1>
-              <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-[#6B6E66]">
-                <span className="flex items-center gap-1"><Target className="h-3.5 w-3.5" />{challenge.total_holes} holes to birdie</span>
-                <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{challenge.courses_info?.length} course(s)</span>
-              </div>
-              {challenge.winner_name && (
-                <div className="flex items-center gap-2 mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <Trophy className="h-5 w-5 text-amber-500" />
-                  <span className="font-bold text-amber-700">{challenge.winner_name} completed the challenge!</span>
-                </div>
-              )}
-            </div>
-            <div className="flex gap-2">
-              {challenge.status === 'active' && !isParticipant && user && (
-                <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={handleJoin} data-testid="join-challenge-btn">
-                  Join Challenge
-                </Button>
-              )}
-              {isAdmin && challenge.status === 'active' && (
-                <Button variant="outline" className="border-[#E2E3DD]" onClick={() => setShowAddPlayer(true)}
-                  data-testid="add-challenge-player-btn">
-                  <UserPlus className="h-4 w-4 mr-1" />Add Player
-                </Button>
-              )}
-            </div>
-          </div>
+      <div className="mb-4">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <h1 className="text-xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>{challenge.name}</h1>
+          <Badge className={challenge.status === 'active'
+            ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100'
+            : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100'}>
+            {challenge.winner_name ? `Won by ${challenge.winner_name}` : challenge.status}
+          </Badge>
+        </div>
+        <p className="text-xs text-[#6B6E66]">
+          <Target className="h-3 w-3 inline mr-1" />{challenge.total_holes} holes to birdie &middot; {participants.length} players
+        </p>
+      </div>
 
-          {/* Share / Invite Link */}
-          {challenge.invite_code && (
-            <div className="mt-4 flex items-center gap-2">
-              <Button className="flex-1 bg-[#C96A52] hover:bg-[#C96A52]/90 h-12"
+      {/* Action buttons */}
+      <div className="space-y-2 mb-5">
+        {!isParticipant && challenge.status === 'active' && user && (
+          <Button className="w-full bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12" onClick={handleJoin}
+            data-testid="join-challenge-btn">
+            <Plus className="h-5 w-5 mr-2" />Join Challenge
+          </Button>
+        )}
+        {isParticipant && challenge.status === 'active' && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <Link to="/play">
+                <Button className="w-full bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12" data-testid="play-round-btn">
+                  <CirclePlay className="h-5 w-5 mr-2" />Play a Round
+                </Button>
+              </Link>
+              <Button className="w-full bg-[#C96A52] hover:bg-[#C96A52]/90 h-12"
                 onClick={() => {
-                  const url = `${window.location.origin}/challenges/join/${challenge.invite_code}`;
-                  if (navigator.share) {
-                    navigator.share({ title: challenge.name, text: `Join my Birdie Challenge: ${challenge.name}`, url });
+                  if (challenge.courses_info?.length === 1) {
+                    openAddRound(challenge.courses_info[0].course_id, user?.user_id);
                   } else {
-                    navigator.clipboard.writeText(url).then(() => toast.success('Invite link copied!'));
+                    // Show course selector
+                    setShowAddRound('select');
                   }
                 }}
-                data-testid="share-challenge-btn">
-                <Share2 className="h-5 w-5 mr-2" />Share Invite Link
+                data-testid="add-round-btn">
+                <Plus className="h-5 w-5 mr-2" />Add Round
               </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div className="bg-[#E8E9E3]/50 rounded-xl p-3">
+              <p className="text-xs text-[#6B6E66] leading-relaxed">
+                <strong className="text-[#1B3C35]">Play a Round</strong> — use the app live on the course. Birdies auto-track!
+                <br /><strong className="text-[#1B3C35]">Add Round</strong> — enter scores from a past game.
+              </p>
+            </div>
+          </>
+        )}
 
-      {/* How it works note */}
-      {isParticipant && challenge.status === 'active' && (
-        <div className="bg-[#E8E9E3]/50 rounded-xl p-3 mb-6">
-          <p className="text-xs text-[#6B6E66] leading-relaxed">
-            <strong className="text-[#1B3C35]">How birdies count:</strong> Play any course in this challenge using "Play a Round" — birdies are automatically tracked here!
-          </p>
-        </div>
+        {/* Share */}
+        {challenge.invite_code && isParticipant && (
+          <Button variant="outline" className="w-full border-[#E2E3DD] h-10"
+            onClick={() => {
+              const url = `${window.location.origin}/challenges/join/${challenge.invite_code}`;
+              if (navigator.share) {
+                navigator.share({ title: challenge.name, text: `Join my Birdie Challenge!`, url });
+              } else {
+                navigator.clipboard.writeText(url).then(() => toast.success('Invite link copied!'));
+              }
+            }}
+            data-testid="share-challenge-btn">
+            <Share2 className="h-4 w-4 mr-2" />Share Invite Link
+          </Button>
+        )}
+      </div>
+
+      {/* Course selector for Add Round (when multiple courses) */}
+      {showAddRound === 'select' && (
+        <Card className="border-[#E2E3DD] shadow-none mb-5">
+          <CardContent className="p-3">
+            <p className="text-xs font-bold text-[#6B6E66] uppercase mb-2">Select Course</p>
+            <div className="space-y-2">
+              {challenge.courses_info?.map(c => (
+                <Button key={c.course_id} variant="outline"
+                  className="w-full justify-start border-[#E2E3DD] h-12"
+                  onClick={() => openAddRound(c.course_id, user?.user_id)}>
+                  <MapPin className="h-4 w-4 mr-2 text-[#6B6E66]" />{c.course_name}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Participants Leaderboard */}
-      <Card className="border-[#E2E3DD] shadow-none mb-6">
+      {/* Progress Leaderboard */}
+      <Card className="border-[#E2E3DD] shadow-none mb-5">
         <CardHeader className="py-3 bg-[#1B3C35] rounded-t-xl">
           <CardTitle className="text-white text-sm font-bold uppercase tracking-wider flex items-center gap-2">
-            <Trophy className="h-4 w-4" /> Progress
+            <Trophy className="h-4 w-4" /> Leaderboard
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {sortedParticipants.map((p, i) => {
             const pct = challenge.total_holes > 0 ? Math.round(((p.completed_holes || 0) / challenge.total_holes) * 100) : 0;
             return (
-              <div key={p.user_id} className="px-4 py-3 border-b border-[#E2E3DD] last:border-0" data-testid={`participant-${i}`}>
+              <div key={p.user_id} className="px-4 py-3 border-b border-[#E2E3DD] last:border-0">
                 <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
                     <span className="text-sm font-bold text-[#1B3C35] w-6 tabular-nums">{i + 1}</span>
-                    <span className="font-medium text-[#1B3C35]">{p.player_name}</span>
-                    {p.user_id === challenge.winner_id && <Trophy className="h-4 w-4 text-amber-500" />}
+                    <span className="font-medium text-[#1B3C35] truncate">{p.player_name}</span>
+                    {p.user_id === challenge.winner_id && <Trophy className="h-4 w-4 text-amber-500 shrink-0" />}
                   </div>
-                  <span className="text-sm font-bold text-[#C96A52] tabular-nums">{p.completed_holes || 0}/{challenge.total_holes}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-sm font-bold text-[#C96A52] tabular-nums">{p.completed_holes || 0}/{challenge.total_holes}</span>
+                    {canManage && p.user_id !== user?.user_id && (
+                      <button onClick={() => removePlayer(p.user_id, p.player_name)}
+                        className={`${confirmDeleteId === p.user_id
+                          ? 'px-2 h-7 rounded-full bg-red-500 text-white text-[10px] font-bold'
+                          : 'w-7 h-7 rounded-full bg-red-50 text-red-400'} flex items-center justify-center active:scale-95 transition-all`}>
+                        {confirmDeleteId === p.user_id ? 'Remove?' : <Trash2 className="h-3 w-3" />}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="h-3 bg-[#E8E9E3] rounded-full overflow-hidden">
+                <div className="h-2.5 bg-[#E8E9E3] rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all duration-500"
                     style={{ width: `${pct}%`, background: pct === 100 ? '#C96A52' : '#1B3C35' }} />
                 </div>
@@ -205,158 +380,60 @@ export default function ChallengeDetail() {
         </CardContent>
       </Card>
 
-      {/* Course Progress Grids */}
-      {challenge.courses_info?.map(course => (
-        <Card key={course.course_id} className="border-[#E2E3DD] shadow-none mb-6">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-                {course.course_name}
-              </CardTitle>
-              {challenge.status === 'active' && (isParticipant || isAdmin) && (
-                <Button size="sm" className="bg-[#C96A52] hover:bg-[#C96A52]/90"
-                  onClick={() => openLogRound(course.course_id, isAdmin ? sortedParticipants[0]?.user_id : '')}
-                  data-testid={`log-round-btn-${course.course_id}`}>
-                  Log Round
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {/* Hole header */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-[#E2E3DD]">
-                    <th className="text-left py-1.5 px-1 text-[#6B6E66] font-bold w-24">Player</th>
-                    {course.holes?.map(h => (
-                      <th key={h.hole} className="py-1.5 px-0.5 text-center text-[#6B6E66] font-bold min-w-[1.8rem]">
-                        <div>{h.hole}</div>
-                        <div className="text-[9px] font-normal">P{h.par}</div>
-                      </th>
-                    ))}
-                    <th className="py-1.5 px-1 text-center text-[#1B3C35] font-bold bg-[#E8E9E3]/50">Done</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedParticipants.map(p => {
-                    const birdied = new Set(
-                      (p.birdied_holes || [])
-                        .filter(b => b.course_id === course.course_id)
-                        .map(b => b.hole_number)
-                    );
-                    return (
-                      <tr key={p.user_id} className="border-b border-[#E2E3DD] last:border-0">
-                        <td className="py-1.5 px-1 font-medium text-[#1B3C35] truncate max-w-[6rem]">{p.player_name}</td>
-                        {course.holes?.map(h => (
-                          <td key={h.hole} className="py-1 px-0.5 text-center">
-                            {birdied.has(h.hole) ? (
-                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#C96A52] text-white">
-                                <Check className="h-3 w-3" />
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#E8E9E3] text-[#6B6E66] text-[10px]">
-                                {h.hole}
-                              </span>
-                            )}
-                          </td>
-                        ))}
-                        <td className="py-1.5 px-1 text-center font-bold text-[#1B3C35] bg-[#E8E9E3]/50 tabular-nums">
-                          {birdied.size}/{course.holes?.length}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-
-      {/* Log Round Dialog */}
-      <Dialog open={showLog} onOpenChange={setShowLog}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Outfit' }}>Log Round</DialogTitle>
-            <DialogDescription>Enter scores. Birdies (under par) will be automatically marked!</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            {/* Player selector for admin */}
-            {isAdmin && participants.length > 0 && (
-              <div>
-                <Label className="text-[#1B3C35] text-xs font-bold uppercase">Player</Label>
-                <div className="flex gap-2 mt-1 flex-wrap">
-                  {participants.map(p => (
-                    <Button key={p.user_id} size="sm"
-                      variant={logPlayerId === p.user_id ? 'default' : 'outline'}
-                      className={logPlayerId === p.user_id ? 'bg-[#1B3C35]' : 'border-[#E2E3DD]'}
-                      onClick={() => setLogPlayerId(p.user_id)}
-                      data-testid={`log-player-${p.user_id}`}>
-                      {p.player_name}
-                    </Button>
-                  ))}
-                </div>
+      {/* Course Progress */}
+      {challenge.courses_info?.map(course => {
+        return (
+          <Card key={course.course_id} className="border-[#E2E3DD] shadow-none mb-4">
+            <CardHeader className="py-2 px-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>{course.course_name}</p>
+                <span className="text-[10px] text-[#6B6E66]">{course.holes?.length} holes</span>
               </div>
-            )}
-            {/* Hole inputs */}
-            <div className="grid grid-cols-9 gap-1">
-              {logHoles.map((h, i) => {
-                const isBirdie = h.strokes > 0 && h.strokes < h.par;
-                return (
-                  <div key={h.hole} className="text-center">
-                    <div className="text-[9px] text-[#6B6E66] font-bold">{h.hole}</div>
-                    <div className="text-[9px] text-[#6B6E66]">P{h.par}</div>
-                    <input type="number" min="0" max="15" value={h.strokes || ''}
-                      onChange={e => {
-                        const val = parseInt(e.target.value) || 0;
-                        setLogHoles(prev => {
-                          const u = [...prev];
-                          u[i] = { ...u[i], strokes: val };
-                          return u;
-                        });
-                      }}
-                      className={`w-full h-9 text-center text-sm font-bold rounded border focus:ring-1 focus:ring-[#1B3C35] focus:outline-none ${
-                        isBirdie ? 'border-[#C96A52] bg-[#C96A52]/10 text-[#C96A52]' : 'border-[#E2E3DD] bg-white text-[#1B3C35]'
-                      }`}
-                      data-testid={`log-hole-${h.hole}`} />
-                  </div>
-                );
-              })}
-            </div>
-            {logHoles.some(h => h.strokes > 0 && h.strokes < h.par) && (
-              <p className="text-sm text-[#C96A52] font-medium">
-                Birdies detected on holes: {logHoles.filter(h => h.strokes > 0 && h.strokes < h.par).map(h => h.hole).join(', ')}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLog(false)}>Cancel</Button>
-            <Button onClick={submitRound} disabled={saving} className="bg-[#1B3C35] hover:bg-[#1B3C35]/90"
-              data-testid="submit-round-btn">
-              <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Submit Round'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Player Dialog */}
-      <Dialog open={showAddPlayer} onOpenChange={setShowAddPlayer}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Outfit' }}>Add Player</DialogTitle>
-            <DialogDescription>Add a friend to this challenge.</DialogDescription>
-          </DialogHeader>
-          <Input value={newPlayerName} onChange={e => setNewPlayerName(e.target.value)}
-            placeholder="Player name" className="border-[#E2E3DD]"
-            onKeyDown={e => e.key === 'Enter' && addPlayer()} data-testid="challenge-player-name" />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddPlayer(false)}>Cancel</Button>
-            <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={addPlayer}
-              data-testid="confirm-add-challenge-player">Add</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 pt-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-[#E2E3DD]">
+                      <th className="text-left py-1 px-1 text-[#6B6E66] font-bold w-20">Player</th>
+                      {course.holes?.map(h => (
+                        <th key={h.hole} className="py-1 px-0.5 text-center text-[#6B6E66] font-bold min-w-[1.6rem]">
+                          {h.hole}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedParticipants.map(p => {
+                      const birdied = new Set(
+                        (p.birdied_holes || []).filter(b => b.course_id === course.course_id).map(b => b.hole_number)
+                      );
+                      return (
+                        <tr key={p.user_id} className="border-b border-[#E2E3DD] last:border-0">
+                          <td className="py-1 px-1 font-medium text-[#1B3C35] truncate max-w-[5rem]">{p.player_name}</td>
+                          {course.holes?.map(h => (
+                            <td key={h.hole} className="py-0.5 px-0.5 text-center">
+                              {birdied.has(h.hole) ? (
+                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#C96A52] text-white">
+                                  <Check className="h-2.5 w-2.5" />
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#E8E9E3] text-[#6B6E66] text-[9px]">
+                                  {h.hole}
+                                </span>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

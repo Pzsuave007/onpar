@@ -1195,6 +1195,24 @@ async def join_challenge(challenge_id: str, request: Request):
     )
     return {"message": "Joined challenge"}
 
+@api_router.post("/challenges/{challenge_id}/remove-player")
+async def remove_player_from_challenge(challenge_id: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    target_uid = body.get("user_id", "")
+    ch = await db.challenges.find_one({"challenge_id": challenge_id}, {"_id": 0})
+    if not ch:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    # Only creator or admin can remove
+    if ch.get("created_by") != user["user_id"] and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only the organizer can remove players")
+    await db.challenges.update_one(
+        {"challenge_id": challenge_id},
+        {"$pull": {"participants": {"user_id": target_uid}}}
+    )
+    await db.challenge_progress.delete_many({"challenge_id": challenge_id, "user_id": target_uid})
+    return {"message": "Player removed"}
+
 @api_router.post("/challenges/{challenge_id}/add-player")
 async def add_player_to_challenge(challenge_id: str, request: Request):
     await get_admin_user(request)
