@@ -1,148 +1,298 @@
 <analysis>**original_problem_statement:** 
-User wanted a golf sporting app for tournaments with a PGA-style public leaderboard. Key requirements included easy administration, player hole-by-hole score entry, and an intuitive UI. 
-As the session progressed, the scope expanded significantly to include:
-- A Live Scorer observer mode for the user to track scores for his daughters.
-- An AI Scorecard Scanner to extract course pars and yardages from physical scorecard photos.
-- Birdie Challenge mode (first to birdie all holes across selected courses wins).
-- Virtual Tours mode (remote asynchronous tournaments where friends play local courses and compete on a 'to-par' leaderboard).
+User wanted a golf sporting app for tournaments with a PGA-style public leaderboard. Over time, it expanded into a comprehensive platform including physical scorecard scanning, Live Scorer observer mode, Birdie Challenges, Virtual Tours, and personal handicaps. The app has now been officially rebranded to **OnPar Live**.
 
 **User's preferred language**: Spanish
-(INSTRUCTION: The user communicates in Spanish. The next agent MUST respond and provide explanations in Spanish, although code and variables should remain in English).
+(INSTRUCT: The user communicates natively in Spanish. The next agent MUST respond and provide explanations in Spanish, although code, variables, and commit messages should remain in English).
 
 **what currently exists?** 
-A feature-rich, full-stack golf application. It supports JWT and Google OAuth. Features include multi-round tournament management, stroke/stableford scoring, a mobile-optimized public PGA-style leaderboard (with expandable hole-by-hole details and color-coded scores), a Live Scorer dashboard, a physical scorecard AI scanner (using Emergent LLM Key) that supports multiple tees (Blue/White/Red), a Play a Round feature for casual tracking, Birdie Challenges, and asynchronous Virtual Tours.
+OnPar Live is a full-stack (React + FastAPI + MongoDB) golf application. It features private-by-default tournaments and challenges using invite links. It includes a PGA-style public leaderboard, a Live Scorer (mobile-first carousel UI), a Live Photo Feed (using local storage), an AI Course Scanner that searches the web for scorecards (using direct OpenAI API), Birdie Challenges, and a Player Dashboard with avatars, stats, and auto-calculated handicaps.
 
 **Last working item**:
-    - Last item agent was working: Redesigning the Landing Page () to showcase all the newly added features (Play, Scan, Challenges, Tours) using appealing golf imagery via the .
-    - Status: USER VERIFICATION PENDING
-    - Agent Testing Done: N (File was created but no screenshot was taken to verify the final layout before the context ended).
-    - Which testing method agent to use? Frontend testing agent / screenshot tool.
+    - Last item agent was working: The user reported three critical bugs/UX issues at the very end of the session that need immediate fixing.
+    - Status: NOT STARTED
+    - Agent Testing Done: N
+    - Which testing method agent to use? Both (backend curl/python-c for API logic + screenshot tool for UI, followed by testing subagent due to multiple complex flow changes).
+    - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: Verify Landing Page Layout
-     - Attempted fixes: Replaced the landing page code with a new design incorporating Unsplash images.
-     - Next debug checklist: Check  rendering via screenshot to ensure images loaded correctly and layout is mobile-responsive.
-     - Why fix this issue and what will be achieved with the fix? Ensures the first impression of the app accurately reflects its capabilities.
-     - Status: TESTING PENDING
+  - Issue 1: Play a Round Blank Screen (P0)
+     - Attempted fixes: None yet.
+     - Next debug checklist: Check . User says selecting a course and a tee results in a blank screen. Check for React state crashes or undefined variables when  are generated from the selected tee.
+     - Why fix this issue and what will be achieved with the fix? Core functionality is broken; users cannot log personal rounds.
+     - Status: NOT STARTED
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix? Frontend
      - Blocked on other issue: None
 
-**In progress Task List**:
-  - Task 1: Landing Page Verification
-     - Where to resume: Take a screenshot of the root route () to verify the new Landing Page design.
-     - What will be achieved with this? Confirmation that the visual update is complete.
-     - Status: TESTING PENDING
+  - Issue 2: Add Round in Challenges does not save to Player Dashboard (P0)
+     - Attempted fixes: None yet.
+     - Next debug checklist: Investigate the  logic in  and the backend route. It seems it might only update  (birdies) but fails to save the actual round to the  collection, which prevents it from showing up in the user's Player Dashboard history and stats.
+     - Why fix this issue and what will be achieved with the fix? Ensures data consistency so rounds played for challenges also count towards personal handicaps and history.
+     - Status: NOT STARTED
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? Both
+
+  - Issue 3: Scoring UI UX - Relative to Par instead of Total Strokes (P1)
+     - Attempted fixes: None yet.
+     - Next debug checklist: Update , , and the Add Round view in . The user wants the scoring inputs to be relative to par (e.g.,  for par,  for bogey,  for birdie) instead of logging total strokes (e.g.,  on a par 4). The backend should probably still store total strokes, so the frontend needs to handle the math () and display the relative score in the center.
+     - Why fix this issue and what will be achieved with the fix? Vastly improves UX for golfers who think in relation to par rather than total strokes.
+     - Status: NOT STARTED
+     - Is recurring issue? N
      - Should Test frontend/backend/both after fix? Frontend
-     - Blocked on something: None
+
+**In progress Task List**:
+  - None (All feature implementations were completed prior to the bug report).
 
 **Upcoming and Future Tasks**
-  Future Tasks:
-  - P0: Translate the application UI to Spanish. (Agent proposed this as a next step 4 separate times, but never executed it. User natively speaks Spanish).
-  - P1: Round history page (allow users to view past personal rounds and stats).
-  - P1: Add tournament stats on the leaderboard (e.g., course average, hardest hole, best round).
-  - P2: Add more game types (Closest to Pin, Longest Drive).
-  - P2: Auto-submit casual rounds to an active Virtual Tour upon completion (currently requires manual submission via the Tour detail page).
+  Upcoming Tasks:
+  - P0: Translate the application UI to Spanish. (User is a native Spanish speaker. This has been delayed multiple times but is highly requested for the final product).
+  - P2: More game types (Closest to Pin, Longest Drive).
+  - P2: Auto-submit casual rounds to an active Virtual Tour upon completion.
 
 **Completed work in this session**
-- Backend structure and MongoDB schemas for users, tournaments, scorecards, courses, challenges, and tours.
-- Google OAuth and JWT Email/Password authentication.
-- Multi-round tournament logic and Live Scorer observer mode.
-- Mobile-optimized PGA-style public leaderboard with expandable hole rows and color indicators (Eagle/Birdie/Bogey).
-- AI Scorecard Scanner () utilizing OpenAI vision via Emergent LLM key, with auto-image rotation.
-- Mobile-optimized Course Editor with large +/- stepper buttons for easy on-course par editing.
-- Multiple Tee support (Blue, White, Gold/Red) for courses.
-- Birdie Challenge feature and Virtual Tours (remote play) feature.
-- Removed default Emergent branding.
+- Rebranded application from Fairway to OnPar Live across the entire stack.
+- Privacy/Visibility System: Made tournaments, challenges, and tours private by default, accessible via invite links.
+- Live Photo Feed: Built a tournament photo feed. Replaced Emergent Object Storage with local server file storage ().
+- Server Deployment Scripts: Created , ,  tailored exactly for the user's cPanel/Apache AlmaLinux server (using , Python 3.9).
+- Live Scorer Redesign: Replaced the long scrolling list with a mobile-first, single-hole carousel.
+- Tournament Settings: Moved player management from the Live Scorer into a dedicated full-page settings route.
+- Player Dashboard Overhaul: Added avatar uploads, automatic handicap calculations, stat grids, and round history.
+- AI Course Search: Added  capability so admins can find courses via web search instead of photo uploads. Transitioned entirely to the direct OpenAI SDK using the user's .
+- Challenge Detail Refactor: Added Share Invite Link, Add Round (post-game entry), and organizer tools to delete players/birdies.
 
 **Earlier issues found/mentioned but not fixed**
-   - Issue 1: AI Scanner Accuracy
-   - Debug checklist: The GPT-4o vision model sometimes misreads rotated or complex scorecards (yielding ~80-90% accuracy). 
-   - Why to solve this issue and what will be achieved with this? Perfect accuracy is hard with LLM vision.
-   - Status: RESOLVED (Mitigated by building a highly user-friendly mobile UI with big +/- stepper buttons so the user can quickly correct any AI mistakes on the fly).
-   - Is recurring issue? Y (inherent to LLM vision).
+  - None identified.
 
 **Known issue recurrence from previous fork**
-  - Recurrence count: 0
-  - Status: N/A
+  - None.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-Frontend: React, Tailwind CSS, Shadcn UI, React Router.
+Frontend: React, Tailwind CSS, Shadcn UI, React Router. (Pre-built locally before deployment).
 Backend: FastAPI, Motor (Async MongoDB), PyJWT, bcrypt.
 Architecture: Monolithic FastAPI backend, SPA React frontend.
 
 **key DB schema**
-  - : {email, name, role, auth_type, password_hash}
-  - : {name, course_name, scoring_format, num_rounds, max_players}
-  - : {tournament_id, user_id, round_number, holes: [{hole, strokes, par}], total_strokes, to_par}
-  - : {course_name, num_holes, tees: [{name, color, total_par, total_yardage, holes: [{hole, par, yards}]}]}
-  - : {name, course_ids, participants, created_by}
-  - : {name, num_rounds, scoring_format, invite_code, status}
+  - : {email, name, role, auth_type, password_hash, avatar_url, handicap}
+  - : {name, course_name, visibility, invite_code}
+  - : {tournament_id, user_id, round_number, holes: [{hole, strokes, par}]}
+  - : {course_name, num_holes, tees: [{name, color, total_par}]}
+  - : {challenge_id, user_id, course_id, hole_number}
+  - : {user_id, course_name, total_strokes, total_to_par, date} (Personal rounds history)
+  - : {tournament_id, user_id, storage_path, url_path}
 
 **changes in tech stack**
-  - None.
+  - **CRITICAL:** Replaced  completely.
+  - Replaced Emergent Object Storage with **Local File Storage**. Photos are stored directly on the user's server ().
+  - Replaced Emergent LLM Key with the user's direct **OPENAI_API_KEY**. The backend uses the official usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
+              [-o ORGANIZATION] [-t {openai,azure}]
+              [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
+              [--azure-ad-token AZURE_AD_TOKEN] [-V]
+              {api,tools,migrate,grit} ...
+
+positional arguments:
+  {api,tools,migrate,grit}
+    api                 Direct API calls
+    tools               Client side tools for convenience
+
+options:
+  -h, --help            show this help message and exit
+  -v, --verbose         Set verbosity.
+  -b API_BASE, --api-base API_BASE
+                        What API base url to use.
+  -k API_KEY, --api-key API_KEY
+                        What API key to use.
+  -p PROXY [PROXY ...], --proxy PROXY [PROXY ...]
+                        What proxy to use.
+  -o ORGANIZATION, --organization ORGANIZATION
+                        Which organization to run as (will use your default
+                        organization if not specified)
+  -t {openai,azure}, --api-type {openai,azure}
+                        The backend API to call, must be `openai` or `azure`
+  --api-version API_VERSION
+                        The Azure API version, e.g.
+                        'https://learn.microsoft.com/en-us/azure/ai-
+                        services/openai/reference#rest-api-versioning'
+  --azure-endpoint AZURE_ENDPOINT
+                        The Azure endpoint, e.g.
+                        'https://endpoint.openai.azure.com'
+  --azure-ad-token AZURE_AD_TOKEN
+                        A token from Azure Active Directory,
+                        https://www.microsoft.com/en-
+                        us/security/business/identity-access/microsoft-entra-
+                        id
+  -V, --version         show program's version number and exit Python SDK.
 
 **All files of reference** 
-- : Core backend logic. Expanded significantly.
-- : Contains Tournament CRUD, Course scanning, and the mobile-optimized Course Editor dialog.
-- : Complex grid layout for PGA-style scoring.
-- : UI for entering scores hole-by-hole.
-- : Recently rewritten to showcase features.
+- : Core backend logic.
+- : Contains the buggy component causing the blank screen.
+-  & : Need UI updates to implement relative-to-par scoring.
+-  & ============================================
+  OnPar Live - Deploying Update
+============================================
+[1/4] Git pull...
+[2/4] Backend dependencies...
+[3/4] Backend files...
+[4/4] Frontend (pre-built, just copy)...
+[5/5] Restart backend...
+ ERROR
+============================================
+  DONE! https://onparlive.com
+============================================: Deployment workflow files.
 
 **Areas that need refactoring**: 
--  has grown to over 1000 lines. While functional, it contains all auth, tournament, course, challenge, and tour routes in a single file. (Note: Do not refactor unless strictly necessary for a bug fix, per system prompt).
+-  is over 1600 lines. The user suggested refactoring it into modules (, ), but this was pushed to the backlog in favor of feature delivery. Do not refactor now unless asked.
 
 **key api endpoints**
-- : Accepts multipart form data (image) and uses LLM to parse scorecard.
-- : Allows an admin to submit scores on behalf of guest players (Live Scorer).
-- : Public unauthenticated access to scores.
-- : Create a remote challenge tour.
+- : Saves a personal round and auto-syncs birdies to active challenges.
+- : Admin Live Scorer submission.
+- : Uses GPT-4o web search to find course scorecards.
+- : Uploads an avatar image.
 
 **Critical Info for New Agent**
-- **Admin Account**: User specifically requested an admin account. Credentials are:  /  (Role: admin).
-- **Emergent LLM Key**: Is currently integrated and working in  using the  model for vision tasks.
-- **Mobile First**: The user primarily uses this app on their phone while on the golf course. Any new UI (especially score entry or editing) MUST be tested and optimized for mobile screens (vertical scrolling, large tap targets).
+- **PRODUCTION DEPLOYMENT WORKFLOW (CRITICAL):** The user's server (cPanel/Apache, 1GB RAM) crashes if yarn run v1.22.22
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command. is executed there. You MUST ALWAYS build the frontend in the Emergent environment using yarn install v1.22.22
+[1/4] Resolving packages...
+success Already up-to-date.
+Done in 1.03s.
+yarn run v1.22.22
+$ craco build
+Creating an optimized production build...
+Compiled with warnings.
+
+[eslint] 
+src/pages/ChallengeDetail.js
+  Line 42:42:  React Hook useEffect has a missing dependency: 'fetchChallenge'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src/pages/PublicLeaderboard.js
+  Line 138:6:  React Hook useEffect has a missing dependency: 'user'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src/pages/TourDetail.js
+  Line 55:37:  React Hook useEffect has a missing dependency: 'fetchTour'. Either include it or remove the dependency array      react-hooks/exhaustive-deps
+  Line 56:41:  React Hook useEffect has a missing dependency: 'fetchMyRounds'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src/pages/TournamentSettings.js
+  Line 39:37:  React Hook useEffect has a missing dependency: 'fetchData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+File sizes after gzip:
+
+  178.06 kB  build/static/js/main.e90a7aa1.js
+  12.07 kB   build/static/css/main.e5c4d57f.css
+
+The project was built assuming it is hosted at /.
+You can control this with the homepage field in your package.json.
+
+The build folder is ready to be deployed.
+You may serve it with a static server:
+
+  yarn global add serve
+  serve -s build
+
+Find out more about deployment here:
+
+  https://cra.link/deployment
+
+Done in 25.68s.
+Frontend built! Now push to GitHub (Save to Github button), then use the Save to Github tool. The user will run ============================================
+  OnPar Live - Deploying Update
+============================================
+[1/4] Git pull...
+[2/4] Backend dependencies...
+[3/4] Backend files...
+[4/4] Frontend (pre-built, just copy)...
+[5/5] Restart backend...
+ ERROR
+============================================
+  DONE! https://onparlive.com
+============================================ on their server, which simply pulls the pre-built  folder and copies the files.
+- **ENVIRONMENT VARIABLES:** Before running yarn install v1.22.22
+[1/4] Resolving packages...
+success Already up-to-date.
+Done in 0.57s.
+yarn run v1.22.22
+$ craco build
+Creating an optimized production build...
+Compiled with warnings.
+
+[eslint] 
+src/pages/ChallengeDetail.js
+  Line 42:42:  React Hook useEffect has a missing dependency: 'fetchChallenge'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src/pages/PublicLeaderboard.js
+  Line 138:6:  React Hook useEffect has a missing dependency: 'user'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src/pages/TourDetail.js
+  Line 55:37:  React Hook useEffect has a missing dependency: 'fetchTour'. Either include it or remove the dependency array      react-hooks/exhaustive-deps
+  Line 56:41:  React Hook useEffect has a missing dependency: 'fetchMyRounds'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src/pages/TournamentSettings.js
+  Line 39:37:  React Hook useEffect has a missing dependency: 'fetchData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+File sizes after gzip:
+
+  178.06 kB  build/static/js/main.e90a7aa1.js
+  12.07 kB   build/static/css/main.e5c4d57f.css
+
+The project was built assuming it is hosted at /.
+You can control this with the homepage field in your package.json.
+
+The build folder is ready to be deployed.
+You may serve it with a static server:
+
+  yarn global add serve
+  serve -s build
+
+Find out more about deployment here:
+
+  https://cra.link/deployment
+
+Done in 18.53s.
+Frontend built! Now push to GitHub (Save to Github button), ensure  has . (Restore it to the preview URL if testing locally).
+- **SCORING UX CHANGE:** The user wants inputs to represent relative par (, , ). The backend should likely still receive and store absolute strokes to prevent breaking existing math, so manage the translation  purely on the frontend.
+- **Admin Account**:  / .
 
 **documents and test reports created in this job** 
-  - /app/auth_testing.md
-  - /app/image_testing.md
-  - /app/memory/test_credentials.md
-  - /app/memory/PRD.md
-  - /app/test_reports/iteration_1.json
-  - /app/test_reports/iteration_2.json
-  - /app/test_reports/iteration_3.json
+  - 
+  -  (Privacy tests)
+  -  (Feed tests)
+  - 
 
 **Last 10 User Messages and any pending HUMAN messages** 
- 1. User asked to change the homepage to reflect what the webapp can actually do and make it look nice. (COMPLETED - Verification pending)
- 2. User reported the AI scanner was making mistakes and provided an image. (COMPLETED - Agent added auto-rotation to the image preprocessing and improved the prompt).
- 3. User asked to redesign the course editing UI for mobile, as the horizontal layout was too hard to use on a phone. (COMPLETED - Agent built a vertical layout with large +/- steppers).
- 4. User asked to change the photo scan input to allow uploading from the gallery instead of forcing the camera. (COMPLETED).
- 5. User asked to improve the course edit experience after scanning, specifically wanting up/down arrows to change pars, and limiting tees to just Blue/White/Red. (COMPLETED).
- 6. User suggested a Remote Challenge or Tour where friends play local courses and compete asynchronously. (COMPLETED).
- 7. User asked for the ability to edit golf courses after they are scanned if the AI made a mistake. (COMPLETED).
- 8. User reported general webapp errors. (COMPLETED - Agent fixed a missing  import in ChallengeDetail and a React state warning in LoginPage).
- 9. User asked to capture all tees (Blue, White, Red) when scanning a scorecard, as different players use different tees. (COMPLETED).
- 10. User requested a Play a Round feature to select a course, enter scores, and have birdies automatically sync to challenges. (COMPLETED).
+ 1. User asked to remove the Leaderboard tab from the main navbar. (Completed)
+ 2. User asked to add an Add Round feature to challenges for post-game entry. (Completed)
+ 3. User wanted a Player Profile/Dashboard overhaul with avatars, handicap, and round history. (Completed)
+ 4. User reported a bug: Challenge organizer couldn't delete incorrect birdies. (Completed)
+ 5. User asked to allow finishing a round after only 9 holes. (Completed)
+ 6. User reported Add Round screen was blank. (Completed)
+ 7. User noted Add Round showed only 9 holes. Agent explained it was a DB test data issue.
+ 8. User asked to format the Challenge birdies grid to fit mobile screens without scrolling. (Completed)
+ 9. **(PENDING)** User reported 3 bugs:  goes blank on course/tee selection.
+ 10. **(PENDING)** User reported  (in Challenge) doesn't record to the main personal rounds/dashboard history. User also requested the new Scoring UX (input +1, 0, -1 instead of total strokes).
 
 **Project Health Check:**
-Healthy.
+Healthy, but has 3 critical UX/logic bugs in the most recent frontend iterations.
 
 **3rd Party Integrations**
-- Google OAuth (Auth) — requires Emergent-managed setup (Already configured)
-- OpenAI GPT-4o Vision (Image scanning) — uses Emergent LLM Key (Already configured)
+- Google OAuth (Auth) — Emergent-managed setup
+- OpenAI SDK () — Requires User API Key ()
 
 **Testing status**
-  - Testing agent used after significant changes: YES (Used for MVP, Multi-round, and Live Scorer phases).
+  - Testing agent used after significant changes: YES (iteration 4, 5).
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: , etc.
-  - Known regressions: None currently.
+  - Test files created: , 
+  - Known regressions:  rendering crash, Challenge Add Round not saving to global .
 
 **Credentials to test flow:**
-- Admin 1:  / 
-- Admin 2 (User's account):  / 
+- Main Admin:  / 
+- Backup Admin:  / 
 
 **What agent forgot to execute**
-- The agent repeatedly suggested translating the application to Spanish in its Next Action Items across multiple finish summaries, but never actually performed the translation. Since the user interacts entirely in Spanish, localizing the frontend (Navbar, buttons, labels) would be a high-value task.</analysis>
+- The Spanish Translation (P0) remains untouched despite being repeatedly proposed to the user in finish summaries.</analysis>
