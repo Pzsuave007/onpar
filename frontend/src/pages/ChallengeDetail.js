@@ -23,6 +23,9 @@ export default function ChallengeDetail() {
   const [logHoles, setLogHoles] = useState([]);
   const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
 
+  // Play a Round course picker (only shown when challenge has >1 course)
+  const [showPlayPicker, setShowPlayPicker] = useState(false);
+
   // Remove player confirm
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [confirmBirdie, setConfirmBirdie] = useState(null);
@@ -302,11 +305,20 @@ export default function ChallengeDetail() {
         {isParticipant && challenge.status === 'active' && (
           <>
             <div className="grid grid-cols-2 gap-2">
-              <Link to="/play">
-                <Button className="w-full bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12" data-testid="play-round-btn">
-                  <CirclePlay className="h-5 w-5 mr-2" />Play a Round
-                </Button>
-              </Link>
+              <Button className="w-full bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12"
+                onClick={() => {
+                  const infos = challenge.courses_info || [];
+                  if (infos.length === 1) {
+                    navigate(`/play/${infos[0].course_id}`);
+                  } else if (infos.length > 1) {
+                    setShowPlayPicker(true);
+                  } else {
+                    navigate('/play');
+                  }
+                }}
+                data-testid="play-round-btn">
+                <CirclePlay className="h-5 w-5 mr-2" />Play a Round
+              </Button>
               <Button className="w-full bg-[#C96A52] hover:bg-[#C96A52]/90 h-12"
                 onClick={() => {
                   if (challenge.courses_info?.length === 1) {
@@ -356,6 +368,29 @@ export default function ChallengeDetail() {
                 <Button key={c.course_id} variant="outline"
                   className="w-full justify-start border-[#E2E3DD] h-12"
                   onClick={() => openAddRound(c.course_id, user?.user_id)}>
+                  <MapPin className="h-4 w-4 mr-2 text-[#6B6E66]" />{c.course_name}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Course selector for Play a Round (when multiple courses) */}
+      {showPlayPicker && (
+        <Card className="border-[#E2E3DD] shadow-none mb-5" data-testid="play-course-picker">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-[#6B6E66] uppercase">Play a Round · Pick Course</p>
+              <button onClick={() => setShowPlayPicker(false)}
+                className="text-[10px] text-[#6B6E66] hover:text-[#1B3C35]">Cancel</button>
+            </div>
+            <div className="space-y-2">
+              {challenge.courses_info?.map(c => (
+                <Button key={c.course_id} variant="outline"
+                  className="w-full justify-start border-[#E2E3DD] h-12"
+                  onClick={() => navigate(`/play/${c.course_id}`)}
+                  data-testid={`play-pick-${c.course_id}`}>
                   <MapPin className="h-4 w-4 mr-2 text-[#6B6E66]" />{c.course_name}
                 </Button>
               ))}
