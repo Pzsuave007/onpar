@@ -1,0 +1,42 @@
+{
+  "summary": "Backend-only regression + new-feature test run against http://localhost:8001 for OnPar Live Phase 13 (WhatsApp invite, Invite Preview page, Calendar, Notifications, Round History). New pytest suite (20 tests) covers tours CRUD, personal invites with auto-filled player_name, notification auto-creation on targeted invite, notifications list/read/mark-all-read, users search (auth-required, empty-query, sensitive-field exclusion), unauth invite preview for personal + tour-wide codes, accept-invite-applies-course flow, join inherits suggested_course, participant course update. Phase 12 suite (match play + random scorer, 10 tests) re-run for regression. Combined: 30/30 pass, 0 failures. Backend startup log clean — 'Application startup complete.' after most recent restart; no IndentationError residue. Code is production-safe for deploy from a backend standpoint.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase13_tours_notifications.py",
+    "/app/backend/tests/test_match_play_random_scorer.py",
+    "/app/test_reports/pytest/phase13.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~2886 lines — still should be split into modules (auth, tours, tournaments, invites, notifications, scorecards, match_play, random_scorer, courses). Growing risk of transient IndentationErrors during edits (exactly the concern raised).",
+    "_create_notification is wrapped in try/except with a warning log — correct, so a DB hiccup does not break the invite flow. Good.",
+    "POST /api/tours/{id}/invites: when target_user_id is set but player_name missing, auto-fills from user profile — VERIFIED. No length safeguard if profile name is exactly 60 chars; [:60] slice is defensive and correct.",
+    "GET /api/tours/invite/{code} deliberately has no auth — matches the new /tours/join/{code} preview page UX. Returns embedded tour meta for personal codes and the raw tour doc for tour-wide codes. Both branches VERIFIED.",
+    "GET /api/users/search requires q >= 2 chars (returns [] otherwise), auth-required, excludes password_hash. All VERIFIED. Good.",
+    "POST /api/notifications/{id}/read is a no-op (still 200) when the id does not belong to the caller because update_one with owner filter silently matches 0. Consider returning {ok, matched} or 404 on not-matched so the client can detect stale IDs. Minor.",
+    "mark-all-read uses update_many filtered to unread AND user_id — good, no lateral scope leak.",
+    "Accept-invite course inheritance: uses invite.course_id/name first, falls back to tour.suggested_course_id/name. VERIFIED both branches. Note: if invite carries a course_name but no course_id, the participant record will have course_id=null (valid — still renders name).",
+    "Double-accept of a personal invite correctly returns 400 'Invite already used' — VERIFIED."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase13_tours_notifications.py"
+  ],
+  "success_rate": {
+    "backend": "100% (30/30 — 20 new + 10 Phase-12 regression)",
+    "frontend": "skipped per request"
+  },
+  "test_credentials": "admin@fairway.com / FairwayAdmin123! (admin). Tests also auto-register a fresh TEST_invitee_*@onpar.test user each run to exercise the target_user_id notification flow — cleaned up implicitly via tour deletion cascades.",
+  "seed_data_creation": "All test tours prefixed TEST_ and deleted in fixture teardown. Tour delete cascades to tour_rounds (verified). Orphan notification docs for the ephemeral invitee remain in db.notifications but are harmless — no PII beyond generated TEST_ user. Tour_invites created against test tours are removed with the tour via client-side cleanup patterns.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite lives at /app/backend/tests/test_phase13_tours_notifications.py. Run with `BACKEND_BASE_URL=http://localhost:8001 pytest backend/tests/test_phase13_tours_notifications.py -v`. Suite auto-registers a fresh invitee user per session so it is idempotent. After production redeploy, re-run against https://onparlive.com by setting BACKEND_BASE_URL accordingly. Phase 12 suite (test_match_play_random_scorer.py) also re-verified green against localhost — no regressions from Phase 13 edits. Backend startup log is clean; no IndentationError in the live process.",
+  "rca of the issue": "No issue found. User's deploy anxiety concerning transient IndentationErrors during the session is unsubstantiated on the current running backend — Application startup complete appears after the most recent reloader restart, and all 30 backend tests (including the CRUD, invite preview, notification side-effect, course-inheritance, and Phase-12 regression paths) pass cleanly. Code is production-safe for backend deploy."
+}
