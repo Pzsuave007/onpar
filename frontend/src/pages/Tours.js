@@ -37,7 +37,7 @@ export default function Tours() {
         name: name.trim(), num_rounds: parseInt(numRounds), scoring_format: scoringFormat,
         visibility
       });
-      toast.success('Tour created!');
+      toast.success('Tournament created!');
       setShowCreate(false);
       setName('');
       setVisibility('private');
@@ -67,14 +67,14 @@ export default function Tours() {
         <div>
           <p className="text-xs tracking-[0.2em] uppercase font-bold text-[#C96A52] mb-1">Remote Competition</p>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#1B3C35] tracking-tight" style={{ fontFamily: 'Outfit' }}>
-            Virtual Tours
+            Virtual Tournaments
           </h1>
           <p className="text-sm text-[#6B6E66] mt-1">Compete with friends remotely - everyone plays their local course</p>
         </div>
         {user && (
           <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => setShowCreate(true)}
             data-testid="create-tour-btn">
-            <Plus className="h-4 w-4 mr-1" />New Tour
+            <Plus className="h-4 w-4 mr-1" />New Tournament
           </Button>
         )}
       </div>
@@ -83,8 +83,8 @@ export default function Tours() {
         <Card className="border-[#E2E3DD] shadow-none">
           <CardContent className="py-16 text-center">
             <Globe className="h-12 w-12 text-[#D6D7D2] mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-[#1B3C35] mb-2" style={{ fontFamily: 'Outfit' }}>No Tours Yet</h3>
-            <p className="text-sm text-[#6B6E66] mb-4">Create a Virtual Tour and invite friends to compete remotely!</p>
+            <h3 className="text-lg font-medium text-[#1B3C35] mb-2" style={{ fontFamily: 'Outfit' }}>No Tournaments Yet</h3>
+            <p className="text-sm text-[#6B6E66] mb-4">Create a Virtual Tournament and invite friends to compete remotely!</p>
           </CardContent>
         </Card>
       ) : (
@@ -148,12 +148,12 @@ export default function Tours() {
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Outfit' }}>Create Virtual Tour</DialogTitle>
+            <DialogTitle style={{ fontFamily: 'Outfit' }}>Create Virtual Tournament</DialogTitle>
             <DialogDescription>Compete remotely - everyone plays their own local course!</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label className="text-[#1B3C35]">Tour Name</Label>
+              <Label className="text-[#1B3C35]">Tournament Name</Label>
               <Input value={name} onChange={e => setName(e.target.value)}
                 className="mt-1 border-[#E2E3DD]" placeholder="Summer Remote Challenge"
                 data-testid="tour-name-input" />

@@ -34,7 +34,7 @@ export default function Navbar() {
             </Link>
             <Link to="/tours" data-testid="nav-tours">
               <Button variant="ghost" className="text-[#1B3C35] hover:bg-[#E8E9E3]">
-                <Globe className="h-4 w-4 mr-1" />Tours
+                <Globe className="h-4 w-4 mr-1" />Tournaments
               </Button>
             </Link>
             {user && (
@@ -88,7 +88,7 @@ export default function Navbar() {
             <Link to="/challenges" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
               onClick={() => setMobileOpen(false)} data-testid="nav-mobile-challenges">Challenges</Link>
             <Link to="/tours" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
-              onClick={() => setMobileOpen(false)} data-testid="nav-mobile-tours">Tours</Link>
+              onClick={() => setMobileOpen(false)} data-testid="nav-mobile-tours">Tournaments</Link>
             {user && (
               <>
                 <Link to="/play" className="block px-3 py-2 rounded-lg hover:bg-[#C96A52]/10 text-[#C96A52] font-semibold"

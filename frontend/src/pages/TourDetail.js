@@ -37,7 +37,7 @@ export default function TourDetail() {
       }
       setTour(res.data);
     } catch {
-      toast.error('Tour not found');
+      toast.error('Tournament not found');
       navigate('/tours');
     } finally {
       setLoading(false);
@@ -104,7 +104,7 @@ export default function TourDetail() {
   return (
     <div className="min-h-screen p-4 sm:p-6 md:p-8 max-w-5xl mx-auto fade-in" data-testid="tour-detail">
       <Button variant="ghost" size="sm" className="mb-4 text-[#6B6E66]" onClick={() => navigate('/tours')}>
-        <ArrowLeft className="h-4 w-4 mr-1" /> Back to Tours
+        <ArrowLeft className="h-4 w-4 mr-1" /> Back to Tournaments
       </Button>
 
       {/* Header */}
@@ -112,7 +112,7 @@ export default function TourDetail() {
         <CardContent className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs tracking-[0.15em] uppercase font-bold text-[#C96A52]">Virtual Tour</p>
+              <p className="text-xs tracking-[0.15em] uppercase font-bold text-[#C96A52]">Virtual Tournament</p>
               <h1 className="text-xl sm:text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
                 {tour.name}
               </h1>
@@ -133,7 +133,7 @@ export default function TourDetail() {
             <div className="flex gap-2">
               {tour.status === 'active' && !isParticipant && user && (
                 <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={handleJoin} data-testid="join-tour-btn">
-                  Join Tour
+                  Join Tournament
                 </Button>
               )}
               <Button variant="outline" className="border-[#E2E3DD]" onClick={shareTour} data-testid="share-tour-btn">
@@ -162,7 +162,7 @@ export default function TourDetail() {
       <Card className="border-[#E2E3DD] shadow-none overflow-hidden">
         <CardHeader className="py-3 bg-[#1B3C35] rounded-t-xl">
           <CardTitle className="text-white text-sm font-bold uppercase tracking-wider flex items-center gap-2">
-            <Trophy className="h-4 w-4" /> Tour Leaderboard
+            <Trophy className="h-4 w-4" /> Tournament Leaderboard
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">

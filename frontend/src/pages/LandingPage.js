@@ -84,7 +84,7 @@ export default function LandingPage() {
               <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center">
                 <Globe className="h-5 w-5 text-white" />
               </div>
-              <span className="text-[10px] text-white/70 font-medium">Virtual Tours</span>
+              <span className="text-[10px] text-white/70 font-medium">Virtual Tournaments</span>
             </div>
           </div>
         </div>
