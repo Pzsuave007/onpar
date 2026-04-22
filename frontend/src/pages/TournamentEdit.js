@@ -20,7 +20,8 @@ export default function TournamentEdit() {
     name: '', course_name: '', start_date: '', end_date: '',
     scoring_format: 'stroke', num_rounds: 1, max_players: 100,
     num_holes: 18, par_per_hole: [4,3,5,4,4,3,4,5,4,4,3,5,4,4,3,4,5,4],
-    description: '', visibility: 'private'
+    description: '', visibility: 'private',
+    team_format: 'individual', team_size: 2
   });
 
   useEffect(() => {
@@ -33,7 +34,8 @@ export default function TournamentEdit() {
         scoring_format: t.scoring_format || 'stroke',
         num_rounds: t.num_rounds || 1, max_players: t.max_players || 100,
         num_holes: t.num_holes || 18, par_per_hole: t.par_per_hole || [],
-        description: t.description || '', visibility: t.visibility || 'private'
+        description: t.description || '', visibility: t.visibility || 'private',
+        team_format: t.team_format || 'individual', team_size: t.team_size || 2
       });
     }).catch(() => toast.error('Tournament not found'))
       .finally(() => setLoading(false));
@@ -44,15 +46,21 @@ export default function TournamentEdit() {
     setSaving(true);
     try {
       if (isNew) {
-        await axios.post(`${API}/tournaments`, form);
+        const res = await axios.post(`${API}/tournaments`, form);
         toast.success('Tournament created!');
+        const newId = res.data.tournament_id;
+        if (form.team_format === 'best_ball' && newId) {
+          navigate(`/tournament/${newId}/teams`);
+          return;
+        }
       } else {
         await axios.put(`${API}/tournaments/${tournamentId}`, {
           name: form.name, course_name: form.course_name,
           start_date: form.start_date, end_date: form.end_date,
           scoring_format: form.scoring_format, num_rounds: form.num_rounds,
           max_players: form.max_players, description: form.description,
-          visibility: form.visibility
+          visibility: form.visibility,
+          team_format: form.team_format, team_size: form.team_size
         });
         toast.success('Tournament updated!');
       }
@@ -168,6 +176,41 @@ export default function TournamentEdit() {
             className="mt-1 border-[#E2E3DD] h-12 text-base" placeholder="Optional"
             data-testid="edit-description" />
         </div>
+
+        <div>
+          <Label className="text-[#1B3C35] text-sm font-bold">Game Format</Label>
+          <Select value={form.team_format} onValueChange={v => setForm({ ...form, team_format: v })}>
+            <SelectTrigger className="mt-1 border-[#E2E3DD] h-12" data-testid="edit-team-format">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="individual">Individual (Stroke Play)</SelectItem>
+              <SelectItem value="best_ball">Best Ball (Team)</SelectItem>
+              <SelectItem value="match_play" disabled>Match Play (coming soon)</SelectItem>
+              <SelectItem value="random_scorer" disabled>Random Scorer (coming soon)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-[#6B6E66] mt-1">
+            {form.team_format === 'best_ball'
+              ? 'Team event — best shot of each team counts for every hole.'
+              : 'Each player tracks their own score.'}
+          </p>
+        </div>
+
+        {form.team_format === 'best_ball' && (
+          <div>
+            <Label className="text-[#1B3C35] text-sm font-bold">Players per Team</Label>
+            <Select value={String(form.team_size)} onValueChange={v => setForm({ ...form, team_size: parseInt(v) })}>
+              <SelectTrigger className="mt-1 border-[#E2E3DD] h-12" data-testid="edit-team-size">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="2">2 players (Four-ball)</SelectItem>
+                <SelectItem value="4">4 players (Scramble-style)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <Button onClick={handleSave} disabled={saving}
           className="w-full bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-14 text-base mt-4"

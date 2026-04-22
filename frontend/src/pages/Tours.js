@@ -104,6 +104,8 @@ export default function Tournaments() {
       num_rounds: t.num_rounds || 1,
       course_name: t.course_name,
       start_date: t.start_date,
+      team_format: t.team_format,
+      team_size: t.team_size,
       participants_count: t.participant_count || t.players_count || t.num_registered || 0,
       raw: t
     });
@@ -204,6 +206,11 @@ export default function Tournaments() {
                           </Badge>
                           {item.scoring_format && (
                             <Badge variant="outline" className="capitalize text-[10px]">{item.scoring_format}</Badge>
+                          )}
+                          {item.team_format === 'best_ball' && (
+                            <Badge className="bg-[#1B3C35] text-white hover:bg-[#1B3C35] text-[10px]">
+                              <Users className="h-3 w-3 mr-0.5" />Best Ball · {item.team_size || 2}
+                            </Badge>
                           )}
                           {item.visibility === 'public' ? (
                             <Badge className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 text-[10px]">

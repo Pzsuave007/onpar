@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Trophy, MapPin, Calendar, Users, ChevronDown, ChevronUp, User, Lock, Camera } from 'lucide-react';
 import { toast } from 'sonner';
 import TournamentFeed from '@/components/TournamentFeed';
+import PlayerAvatar from '@/components/PlayerAvatar';
 
 function formatToPar(score) {
   if (score === 0) return 'E';
@@ -54,18 +55,6 @@ function HoleIndicator({ strokes, par }) {
     <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#1D2D44] text-white text-xs font-bold ring-2 ring-[#1D2D44]/30" title={`+${diff}: ${strokes}`}>
       {strokes}
     </span>
-  );
-}
-
-function PlayerAvatar({ name, picture }) {
-  if (picture) {
-    return <img src={picture} alt={name} className="w-8 h-8 rounded-full object-cover border border-[#E2E3DD]" />;
-  }
-  const initials = (name || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-  return (
-    <div className="w-8 h-8 rounded-full bg-[#1B3C35] flex items-center justify-center text-white text-xs font-bold shrink-0">
-      {initials}
-    </div>
   );
 }
 
@@ -221,6 +210,11 @@ export default function PublicLeaderboard() {
               </div>
               <div className="flex gap-2 mt-3 flex-wrap">
                 <Badge variant="outline" className="capitalize">{tournament.scoring_format}</Badge>
+                {tournament.team_format === 'best_ball' && (
+                  <Badge className="bg-[#1B3C35] text-white hover:bg-[#1B3C35]">
+                    <Users className="h-3 w-3 mr-0.5" />Best Ball · {tournament.team_size || 2}
+                  </Badge>
+                )}
                 <Badge className={tournament.status === 'active'
                   ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100'
                   : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100'}>
@@ -307,15 +301,17 @@ export default function PublicLeaderboard() {
 
                   {/* Rows */}
                   {leaderboard.map((entry, i) => {
-                    const isExpanded = expandedPlayer === entry.user_id;
+                    const rowKey = entry.team_id || entry.user_id;
+                    const isExpanded = expandedPlayer === rowKey;
                     const sortedRounds = [...(entry.rounds || [])].sort((a, b) => a.round_number - b.round_number);
+                    const isTeam = !!entry.is_team;
 
                     return (
-                      <div key={entry.user_id} data-testid={`leaderboard-row-${i}`}>
+                      <div key={rowKey} data-testid={`leaderboard-row-${i}`}>
                         {/* Main row */}
                         <div
                           className={`grid grid-cols-[2.5rem_1fr_3.5rem_2.5rem] sm:grid-cols-[3rem_1fr_5rem_5rem_4rem] items-center px-3 py-3 border-b border-[#E2E3DD] cursor-pointer transition-colors ${isExpanded ? 'bg-[#E8E9E3]/40' : 'hover:bg-[#E8E9E3]/20'} ${i === 0 ? 'bg-amber-50/30' : ''}`}
-                          onClick={() => toggleExpand(entry.user_id)}
+                          onClick={() => toggleExpand(rowKey)}
                           data-testid={`player-row-click-${i}`}
                         >
                           {/* Position */}
@@ -323,16 +319,35 @@ export default function PublicLeaderboard() {
                             {entry.tied ? 'T' : ''}{entry.position}
                           </span>
 
-                          {/* Player name + avatar */}
+                          {/* Player / Team name */}
                           <div className="flex items-center gap-2 min-w-0">
-                            <PlayerAvatar name={entry.player_name} picture={entry.picture} />
+                            {isTeam ? (
+                              <div className="flex -space-x-1.5 shrink-0">
+                                {(entry.members || []).slice(0, 4).map(m => (
+                                  <PlayerAvatar key={m.user_id} name={m.name} url={m.avatar_url} size="sm" ring />
+                                ))}
+                              </div>
+                            ) : (
+                              <PlayerAvatar name={entry.player_name} url={entry.avatar_url || entry.picture} />
+                            )}
                             <div className="min-w-0 flex-1">
-                              <Link to={`/player/${entry.user_id}`}
-                                className="font-semibold text-sm text-[#1B3C35] hover:text-[#C96A52] transition-colors block truncate"
-                                onClick={e => e.stopPropagation()} data-testid={`player-link-${entry.user_id}`}>
-                                {entry.player_name}
-                              </Link>
-                              {sortedRounds.length > 1 && (
+                              {isTeam ? (
+                                <span className="font-semibold text-sm text-[#1B3C35] block truncate">
+                                  {entry.team_name}
+                                </span>
+                              ) : (
+                                <Link to={`/player/${entry.user_id}`}
+                                  className="font-semibold text-sm text-[#1B3C35] hover:text-[#C96A52] transition-colors block truncate"
+                                  onClick={e => e.stopPropagation()} data-testid={`player-link-${entry.user_id}`}>
+                                  {entry.player_name}
+                                </Link>
+                              )}
+                              {isTeam && (
+                                <p className="text-[10px] text-[#6B6E66] truncate">
+                                  {(entry.members || []).map(m => m.name).join(' · ')}
+                                </p>
+                              )}
+                              {!isTeam && sortedRounds.length > 1 && (
                                 <div className="hidden sm:flex gap-2 mt-0.5">
                                   {sortedRounds.map(r => (
                                     <span key={r.round_number} className="text-[10px] text-[#6B6E66] tabular-nums">

@@ -369,6 +369,13 @@ export default function AdminPanel() {
                             <Users className="h-3.5 w-3.5 mr-1" />Players
                           </Button>
                         </Link>
+                        {t.team_format === 'best_ball' && (
+                          <Link to={`/tournament/${t.tournament_id}/teams`} data-testid={`teams-btn-${t.tournament_id}`}>
+                            <Button size="sm" variant="outline" className="border-[#1B3C35] text-[#1B3C35]">
+                              <Users className="h-3.5 w-3.5 mr-1" />Teams
+                            </Button>
+                          </Link>
+                        )}
                         <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50"
                           onClick={() => handleDelete(t.tournament_id)} data-testid={`delete-btn-${t.tournament_id}`}>
                           <Trash2 className="h-3.5 w-3.5" />

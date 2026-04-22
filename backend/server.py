@@ -70,6 +70,8 @@ class TournamentCreate(BaseModel):
     max_players: int = 100
     description: str = ""
     visibility: str = "private"
+    team_format: str = "individual"   # individual | best_ball | match_play | random_scorer
+    team_size: int = 2                 # for best_ball (2 or 4)
 
 class TournamentUpdate(BaseModel):
     name: Optional[str] = None
@@ -82,6 +84,12 @@ class TournamentUpdate(BaseModel):
     max_players: Optional[int] = None
     description: Optional[str] = None
     visibility: Optional[str] = None
+    team_format: Optional[str] = None
+    team_size: Optional[int] = None
+
+class TeamCreate(BaseModel):
+    name: str
+    member_ids: List[str] = []
 
 class HoleScore(BaseModel):
     hole: int
@@ -626,6 +634,118 @@ async def get_my_tournament_scorecards(tournament_id: str, request: Request):
     return scorecards
 
 # --- Leaderboard (Public for public tournaments, auth-required for private) ---
+# --- Tournament Teams (Best Ball / Four-ball format) ---
+@api_router.get("/tournaments/{tournament_id}/teams")
+async def list_teams(tournament_id: str):
+    teams = await db.tournament_teams.find(
+        {"tournament_id": tournament_id}, {"_id": 0}
+    ).sort("created_at", 1).to_list(200)
+    # Enrich each team member with avatar + name
+    all_member_ids = [m for t in teams for m in t.get("members", [])]
+    avatars = await _get_avatars_for(all_member_ids)
+    users = await db.users.find(
+        {"user_id": {"$in": list(set(all_member_ids))}}, {"_id": 0, "user_id": 1, "name": 1}
+    ).to_list(500)
+    name_map = {u["user_id"]: u["name"] for u in users}
+    for t in teams:
+        t["members_detail"] = [
+            {"user_id": uid, "name": name_map.get(uid, "Unknown"), "avatar_url": avatars.get(uid)}
+            for uid in t.get("members", [])
+        ]
+    return teams
+
+
+@api_router.post("/tournaments/{tournament_id}/teams")
+async def create_team(tournament_id: str, data: TeamCreate, request: Request):
+    await get_admin_user(request)
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    team_size = tournament.get("team_size") or 2
+    if len(data.member_ids) > team_size:
+        raise HTTPException(status_code=400, detail=f"Max {team_size} members per team")
+    # Make sure no member is already in another team
+    existing = await db.tournament_teams.find(
+        {"tournament_id": tournament_id, "members": {"$in": data.member_ids}}, {"_id": 0}
+    ).to_list(10)
+    if existing and data.member_ids:
+        raise HTTPException(status_code=400, detail="Some players are already in another team")
+    team_id = f"team_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "team_id": team_id, "tournament_id": tournament_id,
+        "name": data.name.strip()[:60] or f"Team {team_id[-4:]}",
+        "members": data.member_ids,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.tournament_teams.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.put("/tournaments/{tournament_id}/teams/{team_id}")
+async def update_team(tournament_id: str, team_id: str, data: TeamCreate, request: Request):
+    await get_admin_user(request)
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    team_size = tournament.get("team_size") or 2
+    if len(data.member_ids) > team_size:
+        raise HTTPException(status_code=400, detail=f"Max {team_size} members per team")
+    # Make sure new members aren't in other teams
+    conflict = await db.tournament_teams.find(
+        {"tournament_id": tournament_id, "team_id": {"$ne": team_id},
+         "members": {"$in": data.member_ids}}, {"_id": 0}
+    ).to_list(10)
+    if conflict and data.member_ids:
+        raise HTTPException(status_code=400, detail="Some players are already in another team")
+    await db.tournament_teams.update_one(
+        {"team_id": team_id},
+        {"$set": {"name": data.name.strip()[:60], "members": data.member_ids}}
+    )
+    return await db.tournament_teams.find_one({"team_id": team_id}, {"_id": 0})
+
+
+@api_router.delete("/tournaments/{tournament_id}/teams/{team_id}")
+async def delete_team(tournament_id: str, team_id: str, request: Request):
+    await get_admin_user(request)
+    r = await db.tournament_teams.delete_one({"team_id": team_id, "tournament_id": tournament_id})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return {"deleted": team_id}
+
+
+@api_router.post("/tournaments/{tournament_id}/teams/auto")
+async def auto_form_teams(tournament_id: str, request: Request):
+    """Auto-split registered players into teams of `team_size`, in registration order."""
+    await get_admin_user(request)
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    team_size = tournament.get("team_size") or 2
+    # Clear existing teams
+    await db.tournament_teams.delete_many({"tournament_id": tournament_id})
+    # Get registrations in order
+    regs = await db.registrations.find(
+        {"tournament_id": tournament_id}, {"_id": 0}
+    ).sort("registered_at", 1).to_list(500)
+    now = datetime.now(timezone.utc).isoformat()
+    teams_created = []
+    for i in range(0, len(regs), team_size):
+        bucket = regs[i:i + team_size]
+        if not bucket:
+            continue
+        team_id = f"team_{uuid.uuid4().hex[:12]}"
+        doc = {
+            "team_id": team_id, "tournament_id": tournament_id,
+            "name": f"Team {len(teams_created) + 1}",
+            "members": [r["user_id"] for r in bucket],
+            "created_at": now
+        }
+        await db.tournament_teams.insert_one(doc)
+        teams_created.append({"team_id": team_id, "name": doc["name"], "members": doc["members"]})
+    return {"teams": teams_created, "count": len(teams_created)}
+
+
 @api_router.get("/leaderboard/{tournament_id}")
 async def get_leaderboard(tournament_id: str, request: Request):
     tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
@@ -679,6 +799,95 @@ async def get_leaderboard(tournament_id: str, request: Request):
     for uid, data in players.items():
         latest = max(data["rounds"], key=lambda r: r["round_number"])
         data["thru"] = "F" if latest["thru"] == latest["total_holes"] else str(latest["thru"])
+
+    # Best Ball: group players by team and compute team score = min(strokes) per hole
+    if tournament.get("team_format") == "best_ball":
+        teams = await db.tournament_teams.find(
+            {"tournament_id": tournament_id}, {"_id": 0}
+        ).to_list(200)
+        # Fetch names + avatars for all members (some may have no scorecard yet)
+        all_members = [m for t in teams for m in t.get("members", [])]
+        team_avatars = await _get_avatars_for(all_members)
+        team_users = await db.users.find(
+            {"user_id": {"$in": list(set(all_members))}},
+            {"_id": 0, "user_id": 1, "name": 1}
+        ).to_list(500)
+        team_name_map = {u["user_id"]: u["name"] for u in team_users}
+
+        team_rows = []
+        total_holes = tournament.get("num_holes", 18)
+        for team in teams:
+            member_ids = team.get("members", [])
+            member_cards = [sc for sc in scorecards if sc["user_id"] in member_ids]
+            # Collect min strokes per hole across all members, per round
+            per_round = {}
+            for sc in member_cards:
+                rnum = sc["round_number"]
+                if rnum not in per_round:
+                    per_round[rnum] = {}
+                for h in sc["holes"]:
+                    hnum = h["hole"]
+                    strokes = h["strokes"]
+                    if strokes > 0:
+                        cur = per_round[rnum].get(hnum)
+                        if cur is None or strokes < cur["strokes"]:
+                            per_round[rnum][hnum] = {"strokes": strokes, "par": h["par"]}
+            team_rounds = []
+            team_strokes = 0
+            team_to_par = 0
+            latest_played = 0
+            latest_round = 0
+            for rnum in sorted(per_round.keys()):
+                holes_used = per_round[rnum]
+                r_strokes = sum(h["strokes"] for h in holes_used.values())
+                r_par = sum(h["par"] for h in holes_used.values())
+                team_rounds.append({
+                    "round_number": rnum,
+                    "strokes": r_strokes, "to_par": r_strokes - r_par,
+                    "thru": len(holes_used), "total_holes": total_holes,
+                    "holes": sorted([{"hole": hn, **hd} for hn, hd in holes_used.items()],
+                                    key=lambda x: x["hole"])
+                })
+                team_strokes += r_strokes
+                team_to_par += (r_strokes - r_par)
+                if rnum >= latest_round:
+                    latest_round = rnum
+                    latest_played = len(holes_used)
+            thru = "F" if latest_played == total_holes else str(latest_played)
+            team_rows.append({
+                "team_id": team["team_id"],
+                "team_name": team["name"],
+                "player_name": team["name"],  # keep frontend compatibility
+                "members": [
+                    {"user_id": uid, "name": team_name_map.get(uid, "Unknown"),
+                     "avatar_url": team_avatars.get(uid)}
+                    for uid in member_ids
+                ],
+                "avatar_url": next(iter([team_avatars.get(m) for m in member_ids if team_avatars.get(m)]), None),
+                "rounds": team_rounds,
+                "total_strokes": team_strokes,
+                "total_to_par": team_to_par,
+                "stableford_points": 0,
+                "thru": thru,
+                "is_team": True
+            })
+        # Sort by total_to_par ascending; teams with no rounds go last
+        team_rows.sort(key=lambda t: (len(t["rounds"]) == 0, t["total_to_par"]))
+        for i, entry in enumerate(team_rows):
+            if i == 0:
+                entry["position"] = 1
+                entry["tied"] = False
+            else:
+                prev = team_rows[i - 1]
+                same = entry["total_to_par"] == prev["total_to_par"] and len(entry["rounds"]) > 0
+                if same:
+                    entry["position"] = prev["position"]
+                    entry["tied"] = True
+                    prev["tied"] = True
+                else:
+                    entry["position"] = i + 1
+                    entry["tied"] = False
+        return {"tournament": tournament, "leaderboard": team_rows, "is_team_format": True}
 
     leaderboard = list(players.values())
     if tournament.get("scoring_format") == "stableford":
@@ -1946,6 +2155,8 @@ async def startup():
     await db.challenge_feed.create_index("photo_id", unique=True)
     await db.challenge_feed.create_index([("user_id", 1), ("created_at", -1)])
     await db.tournament_feed.create_index([("user_id", 1), ("created_at", -1)])
+    await db.tournament_teams.create_index([("tournament_id", 1)])
+    await db.tournament_teams.create_index("team_id", unique=True)
     logger.info("Database indexes created")
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     logger.info(f"Upload directory: {UPLOAD_DIR}")
