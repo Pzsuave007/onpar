@@ -445,7 +445,7 @@ export default function PublicLeaderboard() {
           </>
           ) : (
             <div className="max-w-xl mx-auto">
-              <TournamentFeed tournamentId={selectedId} canPost={false} />
+              <TournamentFeed tournamentId={selectedId} canPost={!!user} />
             </div>
           )}
         </>

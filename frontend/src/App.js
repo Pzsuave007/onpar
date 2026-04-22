@@ -66,6 +66,7 @@ function AppRouter() {
         <Route path="/play" element={<ProtectedRoute><PlayRound /></ProtectedRoute>} />
         <Route path="/play/:courseId" element={<ProtectedRoute><PlayRound /></ProtectedRoute>} />
         <Route path="/tours" element={<Tours />} />
+        <Route path="/tournaments" element={<Tours />} />
         <Route path="/tours/:tourId" element={<TourDetail />} />
         <Route path="/tours/join/:inviteCode" element={<TourDetail />} />
         <Route path="/player/:userId" element={<PlayerProfile />} />
