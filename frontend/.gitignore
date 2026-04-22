@@ -9,7 +9,7 @@
 /coverage
 
 # production
-/build
+# /build  <- REMOVED: we need build/ tracked so server's fix.sh can copy pre-built files (low-RAM server can't yarn build)
 
 # misc
 .DS_Store
