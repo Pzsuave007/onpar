@@ -16,6 +16,9 @@ export default function TournamentEdit() {
   const isNew = tournamentId === 'new';
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [courses, setCourses] = useState([]);
+  const [courseMode, setCourseMode] = useState('db'); // 'db' or 'custom'
+  const [selectedCourseId, setSelectedCourseId] = useState('');
   const [form, setForm] = useState({
     name: '', course_name: '', start_date: '', end_date: '',
     scoring_format: 'stroke', num_rounds: 1, max_players: 100,
@@ -23,6 +26,27 @@ export default function TournamentEdit() {
     description: '', visibility: 'private',
     team_format: 'individual', team_size: 2
   });
+
+  // Load courses from DB
+  useEffect(() => {
+    axios.get(`${API}/courses`).then(res => setCourses(res.data || [])).catch(() => {});
+  }, []);
+
+  const pickCourse = (courseId) => {
+    setSelectedCourseId(courseId);
+    const c = courses.find(x => x.course_id === courseId);
+    if (!c) return;
+    // Grab the first tee's hole pars (or flat holes)
+    const firstTee = (c.tees && c.tees[0]) || null;
+    const holes = firstTee?.holes || c.holes || [];
+    const pars = holes.map(h => h.par).filter(Boolean);
+    setForm(prev => ({
+      ...prev,
+      course_name: c.course_name,
+      num_holes: c.num_holes || holes.length || 18,
+      par_per_hole: pars.length ? pars : prev.par_per_hole
+    }));
+  };
 
   useEffect(() => {
     if (isNew) return;
@@ -102,9 +126,37 @@ export default function TournamentEdit() {
         </div>
 
         <div>
-          <Label className="text-[#1B3C35] text-sm font-bold">Course</Label>
-          <Input value={form.course_name} onChange={e => setForm({ ...form, course_name: e.target.value })}
-            className="mt-1 border-[#E2E3DD] h-12 text-base" data-testid="edit-course" />
+          <div className="flex items-center justify-between mb-1">
+            <Label className="text-[#1B3C35] text-sm font-bold">Course</Label>
+            <button type="button" onClick={() => setCourseMode(courseMode === 'db' ? 'custom' : 'db')}
+              className="text-[10px] text-[#C96A52] hover:underline uppercase tracking-wider font-bold"
+              data-testid="toggle-course-mode">
+              {courseMode === 'db' ? 'Enter manually' : 'Pick from database'}
+            </button>
+          </div>
+          {courseMode === 'db' ? (
+            <>
+              <Select value={selectedCourseId} onValueChange={pickCourse}>
+                <SelectTrigger className="border-[#E2E3DD] h-12" data-testid="edit-course-select">
+                  <SelectValue placeholder={courses.length ? 'Select a course...' : 'No courses in DB yet'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {courses.map(c => (
+                    <SelectItem key={c.course_id} value={c.course_id}>
+                      {c.course_name} {c.num_holes ? `· ${c.num_holes} holes` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.course_name && (
+                <p className="text-[11px] text-[#6B6E66] mt-1">Selected: {form.course_name}</p>
+              )}
+            </>
+          ) : (
+            <Input value={form.course_name} onChange={e => setForm({ ...form, course_name: e.target.value })}
+              placeholder="Custom course name"
+              className="border-[#E2E3DD] h-12 text-base" data-testid="edit-course" />
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

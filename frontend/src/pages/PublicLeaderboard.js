@@ -220,15 +220,17 @@ export default function PublicLeaderboard() {
                   : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100'}>
                   {tournament.status}
                 </Badge>
-                {(isParticipant || user?.role === 'admin') && tournament.status !== 'completed' && (
-                  <Link to={`/keeper/${selectedId}`} data-testid="enter-my-score-btn">
-                    <Badge className="bg-[#C96A52] text-white hover:bg-[#C96A52]/90 cursor-pointer">
-                      <Camera className="h-3 w-3 mr-1" />
-                      {user?.role === 'admin' ? 'Enter scores' : 'Enter my score'}
-                    </Badge>
-                  </Link>
-                )}
               </div>
+              {(isParticipant || user?.role === 'admin') && tournament.status !== 'completed' && (
+                <Link to={`/keeper/${selectedId}`} data-testid="play-tournament-btn"
+                  className="mt-4 block">
+                  <Button className="w-full bg-[#C96A52] hover:bg-[#C96A52]/90 h-14 text-base font-bold shadow-lg"
+                    style={{ fontFamily: 'Outfit' }}>
+                    <Camera className="h-5 w-5 mr-2" />
+                    Play Tournament
+                  </Button>
+                </Link>
+              )}
             </CardContent>
           </Card>
 
