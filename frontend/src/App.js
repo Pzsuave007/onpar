@@ -18,6 +18,7 @@ import Tours from '@/pages/Tours';
 import TourDetail from '@/pages/TourDetail';
 import TournamentSettings from '@/pages/TournamentSettings';
 import TournamentEdit from '@/pages/TournamentEdit';
+import VirtualTournamentEdit from '@/pages/VirtualTournamentEdit';
 import TournamentTeams from '@/pages/TournamentTeams';
 import Bracket from '@/pages/Bracket';
 import ScorerAssignments from '@/pages/ScorerAssignments';
@@ -73,6 +74,8 @@ function AppRouter() {
         <Route path="/tours" element={<Tours />} />
         <Route path="/tournaments" element={<Tours />} />
         <Route path="/tours/:tourId" element={<TourDetail />} />
+        <Route path="/tour/new/edit" element={<ProtectedRoute><VirtualTournamentEdit /></ProtectedRoute>} />
+        <Route path="/tour/:tourId/edit" element={<ProtectedRoute><VirtualTournamentEdit /></ProtectedRoute>} />
         <Route path="/tours/join/:inviteCode" element={<TourDetail />} />
         <Route path="/player/:userId" element={<PlayerProfile />} />
         <Route path="*" element={<Navigate to="/" replace />} />

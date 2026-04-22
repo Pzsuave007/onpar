@@ -2049,19 +2049,121 @@ async def create_tour(request: Request):
     body = await request.json()
     tour_id = f"tour_{uuid.uuid4().hex[:12]}"
     invite_code = uuid.uuid4().hex[:6].upper()
+    # Suggested course — if a DB course was picked, resolve its name
+    suggested_course_id = body.get("suggested_course_id") or None
+    suggested_course_name = body.get("suggested_course_name") or ""
+    if suggested_course_id and not suggested_course_name:
+        c = await db.golf_courses.find_one({"course_id": suggested_course_id}, {"_id": 0, "course_name": 1})
+        if c:
+            suggested_course_name = c.get("course_name", "")
     doc = {
-        "tour_id": tour_id, "name": body.get("name", ""),
-        "num_rounds": body.get("num_rounds", 5),
+        "tour_id": tour_id,
+        "name": body.get("name", "").strip(),
+        "description": body.get("description", "") or "",
+        "num_rounds": int(body.get("num_rounds", 5)),
         "scoring_format": body.get("scoring_format", "stroke"),
-        "status": "active", "invite_code": invite_code,
+        "status": "active",
+        "invite_code": invite_code,
         "visibility": body.get("visibility", "private"),
-        "participants": [{"user_id": user["user_id"], "player_name": user["name"],
-                          "joined_at": datetime.now(timezone.utc).isoformat()}],
+        "start_date": body.get("start_date", "") or "",
+        "end_date": body.get("end_date", "") or "",
+        "max_players": int(body.get("max_players", 100)),
+        "suggested_course_id": suggested_course_id,
+        "suggested_course_name": suggested_course_name,
+        "participants": [{
+            "user_id": user["user_id"], "player_name": user["name"],
+            "course_id": suggested_course_id, "course_name": suggested_course_name,
+            "joined_at": datetime.now(timezone.utc).isoformat()
+        }],
         "created_by": user["user_id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.tours.insert_one(doc)
     return await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+
+
+@api_router.put("/tours/{tour_id}")
+async def update_tour(tour_id: str, request: Request):
+    user = await get_current_user(request)
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour:
+        raise HTTPException(status_code=404, detail="Tour not found")
+    is_admin = user.get("role") == "admin"
+    if not is_admin and tour.get("created_by") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only the creator or admin can edit")
+    body = await request.json()
+    updates = {}
+    for field in ("name", "description", "scoring_format", "visibility", "start_date",
+                  "end_date", "status"):
+        if field in body:
+            updates[field] = body[field]
+    if "num_rounds" in body:
+        updates["num_rounds"] = int(body["num_rounds"])
+    if "max_players" in body:
+        updates["max_players"] = int(body["max_players"])
+    if "suggested_course_id" in body or "suggested_course_name" in body:
+        cid = body.get("suggested_course_id")
+        cname = body.get("suggested_course_name", "")
+        if cid and not cname:
+            c = await db.golf_courses.find_one({"course_id": cid}, {"_id": 0, "course_name": 1})
+            if c: cname = c.get("course_name", "")
+        updates["suggested_course_id"] = cid
+        updates["suggested_course_name"] = cname
+    if updates:
+        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db.tours.update_one({"tour_id": tour_id}, {"$set": updates})
+    return await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+
+
+@api_router.delete("/tours/{tour_id}")
+async def delete_tour(tour_id: str, request: Request):
+    user = await get_current_user(request)
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour:
+        raise HTTPException(status_code=404, detail="Tour not found")
+    is_admin = user.get("role") == "admin"
+    if not is_admin and tour.get("created_by") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only the creator or admin can delete")
+    await db.tours.delete_one({"tour_id": tour_id})
+    await db.tour_rounds.delete_many({"tour_id": tour_id})
+    return {"deleted": tour_id}
+
+
+@api_router.put("/tours/{tour_id}/participants/{user_id}/course")
+async def set_participant_course(tour_id: str, user_id: str, request: Request):
+    """Assign/change the golf course a participant will play in the tour.
+    Allowed for: the participant themselves, the tour creator, or an admin."""
+    caller = await get_current_user(request)
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour:
+        raise HTTPException(status_code=404, detail="Tour not found")
+    is_admin = caller.get("role") == "admin"
+    is_creator = tour.get("created_by") == caller["user_id"]
+    is_self = caller["user_id"] == user_id
+    if not (is_admin or is_creator or is_self):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    body = await request.json()
+    course_id = body.get("course_id")
+    course_name = body.get("course_name", "")
+    if course_id and not course_name:
+        c = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0, "course_name": 1})
+        if c: course_name = c.get("course_name", "")
+    # Find participant
+    participants = tour.get("participants", [])
+    updated = False
+    for p in participants:
+        if p["user_id"] == user_id:
+            p["course_id"] = course_id
+            p["course_name"] = course_name
+            p["course_assigned_at"] = datetime.now(timezone.utc).isoformat()
+            p["course_assigned_by"] = caller["user_id"]
+            updated = True
+            break
+    if not updated:
+        raise HTTPException(status_code=404, detail="Participant not in this tour")
+    await db.tours.update_one({"tour_id": tour_id}, {"$set": {"participants": participants}})
+    return {"course_id": course_id, "course_name": course_name}
+
 
 @api_router.get("/tours")
 async def list_tours(request: Request):
@@ -2115,10 +2217,17 @@ async def join_tour(tour_id: str, request: Request):
         raise HTTPException(status_code=400, detail="Tour not active")
     if any(p["user_id"] == user["user_id"] for p in tour.get("participants", [])):
         raise HTTPException(status_code=400, detail="Already joined")
+    max_players = tour.get("max_players", 100)
+    if len(tour.get("participants", [])) >= max_players:
+        raise HTTPException(status_code=400, detail="Tournament is full")
     await db.tours.update_one(
         {"tour_id": tour_id},
-        {"$push": {"participants": {"user_id": user["user_id"], "player_name": user["name"],
-                                     "joined_at": datetime.now(timezone.utc).isoformat()}}}
+        {"$push": {"participants": {
+            "user_id": user["user_id"], "player_name": user["name"],
+            "course_id": tour.get("suggested_course_id"),
+            "course_name": tour.get("suggested_course_name", ""),
+            "joined_at": datetime.now(timezone.utc).isoformat()
+        }}}
     )
     return {"message": "Joined tour"}
 

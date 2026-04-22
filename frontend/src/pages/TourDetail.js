@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { ArrowLeft, Trophy, Globe, Users, Share2, Hash, Flag, MapPin, Check } from 'lucide-react';
+import { ArrowLeft, Trophy, Globe, Users, Share2, Hash, Flag, MapPin, Check, Pencil, Settings } from 'lucide-react';
 
 function formatToPar(s) { return s === 0 ? 'E' : s > 0 ? `+${s}` : `${s}`; }
 function scoreClr(s) { return s < 0 ? 'text-[#C96A52] font-bold' : s > 0 ? 'text-[#1D2D44]' : 'text-[#4A5D23] font-bold'; }
@@ -21,6 +22,10 @@ export default function TourDetail() {
   const [myRounds, setMyRounds] = useState([]);
   const [showSubmit, setShowSubmit] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [courses, setCourses] = useState([]);
+  const [editingCourseFor, setEditingCourseFor] = useState(null); // participant being edited
+  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [savingCourse, setSavingCourse] = useState(false);
 
   const fetchTour = async () => {
     try {
@@ -54,6 +59,32 @@ export default function TourDetail() {
 
   useEffect(() => { fetchTour(); }, [tourId, inviteCode]);
   useEffect(() => { fetchMyRounds(); }, [user]);
+  useEffect(() => {
+    axios.get(`${API}/courses`).then(r => setCourses(r.data || [])).catch(() => {});
+  }, []);
+
+  const openCourseEditor = (participant) => {
+    setEditingCourseFor(participant);
+    setSelectedCourseId(participant.course_id || 'none');
+  };
+
+  const saveParticipantCourse = async () => {
+    if (!editingCourseFor) return;
+    setSavingCourse(true);
+    try {
+      const courseId = selectedCourseId === 'none' ? null : selectedCourseId;
+      const c = courses.find(x => x.course_id === courseId);
+      await axios.put(
+        `${API}/tours/${tour.tour_id}/participants/${editingCourseFor.user_id}/course`,
+        { course_id: courseId, course_name: c?.course_name || '' }
+      );
+      toast.success('Course updated');
+      setEditingCourseFor(null);
+      fetchTour();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed');
+    } finally { setSavingCourse(false); }
+  };
 
   const handleJoin = async () => {
     try {
@@ -91,6 +122,9 @@ export default function TourDetail() {
   }
 
   const isParticipant = user && tour.participants?.some(p => p.user_id === user.user_id);
+  const isCreator = user && tour.created_by === user.user_id;
+  const isAdmin = user && user.role === 'admin';
+  const canEditTour = isCreator || isAdmin;
   const myTourRounds = tour.participants?.find(p => p.user_id === user?.user_id);
   const roundsPlayed = myTourRounds?.rounds_played || 0;
   const canSubmit = isParticipant && roundsPlayed < tour.num_rounds;
@@ -136,11 +170,27 @@ export default function TourDetail() {
                   Join Tournament
                 </Button>
               )}
+              {canEditTour && (
+                <Button variant="outline" className="border-[#E2E3DD]"
+                  onClick={() => navigate(`/tour/${tour.tour_id}/edit`)}
+                  data-testid="edit-tour-btn">
+                  <Settings className="h-4 w-4 mr-1" />Edit
+                </Button>
+              )}
               <Button variant="outline" className="border-[#E2E3DD]" onClick={shareTour} data-testid="share-tour-btn">
                 <Share2 className="h-4 w-4 mr-1" />Invite
               </Button>
             </div>
           </div>
+          {tour.description && (
+            <p className="text-sm text-[#6B6E66] mt-3 whitespace-pre-wrap">{tour.description}</p>
+          )}
+          {tour.suggested_course_name && (
+            <div className="flex items-center gap-1.5 mt-3 text-xs text-[#6B6E66]">
+              <Flag className="h-3 w-3 text-[#C96A52]" />
+              <span>Default course: <span className="font-semibold text-[#1B3C35]">{tour.suggested_course_name}</span></span>
+            </div>
+          )}
           {/* Action buttons for participants */}
           {canSubmit && (
             <div className="flex gap-2 mt-4 pt-4 border-t border-[#E2E3DD]">
@@ -183,6 +233,8 @@ export default function TourDetail() {
               {/* Rows */}
               {participants.map((p, i) => {
                 const rounds = p.rounds || [];
+                const isMe = user && p.user_id === user.user_id;
+                const canEditCourse = isMe || canEditTour;
                 return (
                   <div key={p.user_id}
                     className={`grid grid-cols-[2rem_1fr_repeat(var(--cols),3rem)_4rem] sm:grid-cols-[2.5rem_1fr_repeat(var(--cols),4rem)_5rem] items-center px-3 py-2.5 border-b border-[#E2E3DD] last:border-0 ${i === 0 && p.rounds_played > 0 ? 'bg-amber-50/30' : ''}`}
@@ -191,11 +243,19 @@ export default function TourDetail() {
                     <span className="text-center text-sm font-bold text-[#1B3C35] tabular-nums">{i + 1}</span>
                     <div className="min-w-0">
                       <span className="font-semibold text-sm text-[#1B3C35] truncate block">{p.player_name}</span>
-                      {rounds.length > 0 && (
-                        <span className="text-[10px] text-[#6B6E66]">
-                          {rounds.map(r => r.course_name).filter(Boolean).join(', ')}
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Flag className={`h-3 w-3 shrink-0 ${p.course_name ? 'text-[#C96A52]' : 'text-[#D6D7D2]'}`} />
+                        <span className="text-[10px] text-[#6B6E66] truncate">
+                          {p.course_name || <span className="italic">no course set</span>}
                         </span>
-                      )}
+                        {canEditCourse && (
+                          <button onClick={() => openCourseEditor(p)}
+                            className="text-[#C96A52] hover:text-[#1B3C35] shrink-0"
+                            data-testid={`edit-course-${p.user_id}`}>
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {Array.from({ length: tour.num_rounds }, (_, ri) => {
                       const round = rounds.find(r => r.round_number === ri + 1);
@@ -265,6 +325,47 @@ export default function TourDetail() {
               ))}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit participant course dialog */}
+      <Dialog open={!!editingCourseFor} onOpenChange={v => !v && setEditingCourseFor(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: 'Outfit' }}>
+              {editingCourseFor?.user_id === user?.user_id ? 'Pick Your Course' : `Assign Course · ${editingCourseFor?.player_name}`}
+            </DialogTitle>
+            <DialogDescription>
+              Choose the course this player will play for their rounds. Leave blank to let them decide later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Select value={selectedCourseId || 'none'} onValueChange={setSelectedCourseId}>
+              <SelectTrigger className="border-[#E2E3DD] h-12" data-testid="participant-course-select">
+                <SelectValue placeholder="Pick a course..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— No course —</SelectItem>
+                {courses.map(c => (
+                  <SelectItem key={c.course_id} value={c.course_id}>
+                    {c.course_name} {c.num_holes ? `· ${c.num_holes} holes` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {courses.length === 0 && (
+              <p className="text-xs text-[#6B6E66] mt-2">
+                No courses in the database yet. Admin can add courses in the admin panel.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingCourseFor(null)}>Cancel</Button>
+            <Button onClick={saveParticipantCourse} disabled={savingCourse}
+              className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" data-testid="save-participant-course-btn">
+              {savingCourse ? 'Saving...' : 'Save Course'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

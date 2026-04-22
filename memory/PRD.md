@@ -83,7 +83,21 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
   - Endpoints: POST /api/tournaments/{id}/scorer-assignments/shuffle, GET /api/tournaments/{id}/scorer-assignments (with `my_target` for caller).
   - Frontend: `/tournament/:id/scorer-assignments` page shows "You're scoring: X" card and all pairings; "Shuffle" button for admin; LiveScorer now shows only the assigned target for non-admins.
 - Files touched: `/app/backend/server.py` (+~250 lines, random import); `/app/frontend/src/App.js` (2 new routes); new files `Bracket.js`, `ScorerAssignments.js`; minor edits to `TournamentEdit.js` (enabled options + redirect logic) and `LiveScorer.js` (Random Scorer target handling).
-- TESTED: iteration_7.json — backend 10/10 (pytest on localhost), frontend regression pass for Phase-11 fix. New-feature pages cannot be E2E-tested on production yet because onparlive.com is serving the OLD bundle (user must deploy).
+- TESTED: iteration_7.json — backend 10/10 (pytest on localhost), frontend regression pass for Phase-11 fix.
+
+### Phase 13 - Virtual Tournament Full Setup + Course Assignments (Apr 22, 2026) ✅
+- **Removed the popup** for Virtual Tournament creation. Replaced by a full-page setup at `/tour/new/edit` (file `VirtualTournamentEdit.js`), mirroring the Local Tournament form.
+  - New fields: `description`, `start_date`, `end_date`, `max_players`, `suggested_course_id`, `suggested_course_name`.
+- **Per-participant course assignment** — each participant has `course_id` + `course_name` in the tour doc. Courses picked from the existing golf_courses DB.
+  - Participant can pick/change their own course from the leaderboard row.
+  - Creator or admin can assign/reassign any participant's course.
+  - Shown inline on leaderboard row (flag icon + course name + pencil button for edit).
+- **Tour edit flow** — creator/admin see an "Edit" button on TourDetail that navigates to `/tour/:id/edit`.
+- **Join flow** — new participants auto-inherit the `suggested_course` if set, and can override later.
+- **Max players enforcement** — POST /tours/{id}/join returns 400 if full.
+- New endpoints: PUT /api/tours/{id}, DELETE /api/tours/{id}, PUT /api/tours/{id}/participants/{user_id}/course.
+- Files touched: `/app/backend/server.py` (~+100 lines in create_tour, update_tour, delete_tour, set_participant_course, updated join_tour); `/app/frontend/src/App.js` (2 new routes); new file `VirtualTournamentEdit.js`; cleaned up `Tours.js` (removed showCreateVirtual dialog + unused imports); `TourDetail.js` (+edit button, +description + default course chips, +per-participant course editor dialog, +isAdmin/isCreator detection).
+- Verified via curl against localhost: create, update, participant course assign, list.
 
 ## Admin Credentials
 - Email: admin@fairway.com / Password: FairwayAdmin123!

@@ -7,11 +7,8 @@ import axios from 'axios';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Plus, Globe, Users, ChevronRight, Hash, Share2, Lock, Trophy, MapPin, Calendar } from 'lucide-react';
 
@@ -42,12 +39,6 @@ export default function Tournaments() {
 
   // Virtual create dialog
   const [showPicker, setShowPicker] = useState(false);
-  const [showCreateVirtual, setShowCreateVirtual] = useState(false);
-  const [name, setName] = useState('');
-  const [numRounds, setNumRounds] = useState('5');
-  const [scoringFormat, setScoringFormat] = useState('stroke');
-  const [visibility, setVisibility] = useState('private');
-  const [creating, setCreating] = useState(false);
 
   const loadAll = () => {
     setLoading(true);
@@ -61,23 +52,6 @@ export default function Tournaments() {
   };
 
   useEffect(() => { loadAll(); }, []);
-
-  const createVirtual = async () => {
-    if (!name.trim()) { toast.error('Name required'); return; }
-    setCreating(true);
-    try {
-      await axios.post(`${API}/tours`, {
-        name: name.trim(), num_rounds: parseInt(numRounds),
-        scoring_format: scoringFormat, visibility
-      });
-      toast.success('Virtual Tournament created!');
-      setShowCreateVirtual(false);
-      setName(''); setVisibility('private');
-      loadAll();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed');
-    } finally { setCreating(false); }
-  };
 
   const shareVirtual = (tour) => {
     const url = `${window.location.origin}/tours/join/${tour.invite_code}`;
@@ -147,7 +121,7 @@ export default function Tournaments() {
         </div>
         {user && (
           <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90"
-            onClick={() => (isAdmin ? setShowPicker(true) : setShowCreateVirtual(true))}
+            onClick={() => (isAdmin ? setShowPicker(true) : navigate('/tour/new/edit'))}
             data-testid="create-tournament-btn">
             <Plus className="h-4 w-4 mr-1" />New Tournament
           </Button>
@@ -273,7 +247,7 @@ export default function Tournaments() {
               </div>
             </button>
             <button
-              onClick={() => { setShowPicker(false); setShowCreateVirtual(true); }}
+              onClick={() => { setShowPicker(false); navigate('/tour/new/edit'); }}
               className="flex items-start gap-3 p-4 rounded-xl border-2 border-[#E2E3DD] hover:border-[#C96A52] hover:bg-[#C96A52]/5 text-left transition-colors"
               data-testid="picker-virtual">
               <div className="w-10 h-10 rounded-full bg-[#C96A52] text-white flex items-center justify-center shrink-0">
@@ -285,64 +259,6 @@ export default function Tournaments() {
               </div>
             </button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Virtual create dialog */}
-      <Dialog open={showCreateVirtual} onOpenChange={setShowCreateVirtual}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Outfit' }}>Create Virtual Tournament</DialogTitle>
-            <DialogDescription>Compete remotely — everyone plays their own local course.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label className="text-[#1B3C35]">Tournament Name</Label>
-              <Input value={name} onChange={e => setName(e.target.value)}
-                className="mt-1 border-[#E2E3DD]" placeholder="Summer Remote Challenge"
-                data-testid="virtual-name-input" />
-            </div>
-            <div>
-              <Label className="text-[#1B3C35]">Number of Rounds</Label>
-              <Select value={numRounds} onValueChange={setNumRounds}>
-                <SelectTrigger className="mt-1 border-[#E2E3DD]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[3, 5, 7, 10, 15, 20].map(n => (<SelectItem key={n} value={String(n)}>{n} rounds</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-[#1B3C35]">Scoring</Label>
-              <Select value={scoringFormat} onValueChange={setScoringFormat}>
-                <SelectTrigger className="mt-1 border-[#E2E3DD]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="stroke">Stroke Play (to par)</SelectItem>
-                  <SelectItem value="stableford">Stableford (points)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-[#1B3C35]">Visibility</Label>
-              <Select value={visibility} onValueChange={setVisibility}>
-                <SelectTrigger className="mt-1 border-[#E2E3DD]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="private">
-                    <span className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" />Private - Invite only</span>
-                  </SelectItem>
-                  <SelectItem value="public">
-                    <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" />Public - Anyone can see</span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateVirtual(false)}>Cancel</Button>
-            <Button onClick={createVirtual} disabled={creating} className="bg-[#C96A52] hover:bg-[#C96A52]/90"
-              data-testid="create-virtual-submit">
-              {creating ? 'Creating...' : 'Create Virtual Tournament'}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
