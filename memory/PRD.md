@@ -64,6 +64,11 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 - Additional: moved legacy-course fallback out of render body into useEffect (React best-practice).
 - TESTED: iteration_6.json — 100% backend + 100% frontend.
 
+### Phase 11 - Tournament Creation Routing Fix (Apr 22, 2026) ✅
+- **Bug #4 (P0) FIXED**: "Tournament not found" toast after clicking "Create Tournament" on new tournament form. Root cause: duplicate Route `/tournament/new/edit` in App.js was matching with priority over `/tournament/:tournamentId/edit`, causing `useParams().tournamentId === undefined` → `isNew === false` → GET /api/tournaments/undefined → 404 → toast "Tournament not found". Clicking Save Changes then fired PUT /api/tournaments/undefined → also 404. Fix: removed the redundant static route so only the dynamic route remains, correctly exposing `tournamentId = "new"`.
+- File touched: `/app/frontend/src/App.js` (removed 1 line).
+- Verified by reproducing the bug via Playwright (captured the 404 PUT request to `/tournaments/undefined` and the toast) before applying the fix; rebuilt with `bash build_prod.sh` (new bundle: `main.1910f1da.js`). User must Save to GitHub and run `fix.sh` on the Apache server to deploy.
+
 ## Admin Credentials
 - Email: admin@fairway.com / Password: FairwayAdmin123!
 - Email: pzsuave007@gmail.com / Password: MXmedia007 (primary admin)
@@ -94,7 +99,8 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 
 ## Prioritized Backlog
 ### P0
-- Translate UI to Spanish (user's native language) — repeatedly pushed back
+- Translate UI to Spanish (user's native language) — repeatedly pushed back, scheduled next after tournament formats rollout
+- Implement remaining tournament formats: Match Play (bracket 1v1, half points on ties, elimination) and Random Scorer (random scorekeeper per group)
 
 ### P1
 - Dedicated Round History page with filters (course, date range)
@@ -103,7 +109,8 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 ### P2
 - More game types (Closest to Pin, Longest Drive)
 - Auto-submit casual rounds to active Virtual Tour on completion
-- Refactor: Split server.py (~1700 lines) into routers/ and models/
+- Notification badges when a new photo is posted in a user's challenge/tournament
+- Refactor: Split server.py (~2100 lines) into routers/ and models/
 - Shared helper for `rounds` insert logic used by POST /rounds and POST /challenges/{id}/log-round (code drift risk)
 
 ## 3rd Party Integrations
