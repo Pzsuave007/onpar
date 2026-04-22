@@ -5,8 +5,9 @@ import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Flag, MapPin, Target } from 'lucide-react';
+import { ArrowLeft, Save, Flag, MapPin, Target, ChevronLeft, ChevronRight, LayoutGrid } from 'lucide-react';
 
 const TEE_COLORS = {
   black: 'bg-gray-900 text-white',
@@ -34,6 +35,8 @@ export default function PlayRound() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [birdieAlerts, setBirdieAlerts] = useState([]);
+  const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
+  const [showFullCard, setShowFullCard] = useState(false);
 
   useEffect(() => {
     axios.get(`${API}/courses`).then(res => {
@@ -61,10 +64,22 @@ export default function PlayRound() {
     setHoles(tee.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, toPar: '', yardage: h.yardage || 0 })));
     setRoundId(null);
     setBirdieAlerts([]);
+    setCurrentHoleIndex(0);
+  };
+
+  // Directly set strokes for a hole (used by the +/- stepper).
+  const setHoleStrokes = (index, strokes) => {
+    setHoles(prev => {
+      const updated = [...prev];
+      const h = updated[index];
+      const clamped = Math.max(0, Math.min(15, strokes));
+      updated[index] = { ...h, strokes: clamped, toPar: clamped === 0 ? '' : clamped - h.par };
+      return updated;
+    });
   };
 
   // Relative-to-par entry: user types -1 for birdie, 0 for par, +1 for bogey.
-  // We translate that to absolute strokes for backend compatibility.
+  // We translate that to absolute strokes for backend compatibility. Used by the grid input.
   const updateHole = (index, toParInput) => {
     setHoles(prev => {
       const updated = [...prev];
@@ -205,84 +220,62 @@ export default function PlayRound() {
     );
   }
 
-  // Step 3: Scorecard entry
-  const front9 = holes.slice(0, Math.min(9, holes.length));
-  const back9 = holes.length > 9 ? holes.slice(9) : [];
+  // Step 3: Scorecard entry (mobile-first hole-by-hole carousel)
   const played = holes.filter(h => h.strokes > 0);
   const totalStrokes = played.reduce((s, h) => s + h.strokes, 0);
   const totalPar = played.reduce((s, h) => s + h.par, 0);
   const toPar = totalStrokes - totalPar;
   const allFilled = holes.length > 0 && holes.every(h => h.strokes > 0);
+  const front9 = holes.slice(0, Math.min(9, holes.length));
+  const back9 = holes.length > 9 ? holes.slice(9) : [];
   const front9Done = front9.length > 0 && front9.every(h => h.strokes > 0);
   const canFinish = allFilled || (front9Done && back9.length > 0);
   const birdieCount = played.filter(h => h.strokes < h.par).length;
   const formatScore = (s) => s === 0 ? 'E' : s > 0 ? `+${s}` : `${s}`;
   const scoreClr = (s) => s < 0 ? 'text-[#C96A52]' : s > 0 ? 'text-[#1D2D44]' : 'text-[#4A5D23]';
 
-  const HoleGrid = ({ holeSet, label, startIdx }) => {
-    const setTotal = holeSet.filter(h => h.strokes > 0).reduce((s, h) => s + h.strokes, 0);
-    const setPar = holeSet.reduce((s, h) => s + h.par, 0);
-    return (
-      <div className="mb-5">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider">{label}</h3>
-          <span className="text-[10px] text-[#6B6E66]">-1 birdie · 0 par · +1 bogey</span>
-        </div>
-        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${holeSet.length}, 1fr) 2.5rem` }}>
-          {holeSet.map(h => (
-            <div key={`n${h.hole}`} className="text-center text-[9px] text-[#6B6E66] font-bold">{h.hole}</div>
-          ))}
-          <div className="text-center text-[9px] text-[#1B3C35] font-bold bg-[#E8E9E3] rounded">
-            {label === 'Front 9' ? 'OUT' : 'IN'}
-          </div>
-          {holeSet.map(h => (
-            <div key={`p${h.hole}`} className="text-center text-[9px] text-[#6B6E66]">P{h.par}</div>
-          ))}
-          <div className="text-center text-[9px] text-[#6B6E66] font-bold bg-[#E8E9E3] rounded">{setPar}</div>
-          {holeSet.map(h => (
-            <div key={`y${h.hole}`} className="text-center text-[8px] text-[#6B6E66]/60">{h.yardage || ''}</div>
-          ))}
-          <div className="text-center text-[8px] text-[#6B6E66]/60 bg-[#E8E9E3] rounded">
-            {holeSet.reduce((s, h) => s + (h.yardage || 0), 0) || ''}
-          </div>
-          {holeSet.map((h, i) => {
-            const idx = startIdx + i;
-            const diff = h.strokes > 0 ? h.strokes - h.par : null;
-            let bg = 'bg-white border-[#E2E3DD]';
-            if (diff !== null) {
-              if (diff <= -2) bg = 'bg-amber-100 border-amber-300 text-amber-700';
-              else if (diff === -1) bg = 'bg-[#C96A52]/15 border-[#C96A52]/40 text-[#C96A52]';
-              else if (diff === 0) bg = 'bg-[#4A5D23]/10 border-[#4A5D23]/30 text-[#4A5D23]';
-              else bg = 'bg-[#1D2D44]/10 border-[#1D2D44]/30 text-[#1D2D44]';
-            }
-            return (
-              <input key={h.hole} type="number" step="1" min="-4" max="10"
-                value={h.toPar === '' || h.toPar === undefined ? '' : h.toPar}
-                onChange={e => updateHole(idx, e.target.value)}
-                placeholder="–"
-                className={`w-full h-10 text-center text-sm font-bold rounded border ${bg} focus:ring-2 focus:ring-[#1B3C35] focus:outline-none`}
-                data-testid={`play-hole-${h.hole}`} />
-            );
-          })}
-          <div className="h-10 flex items-center justify-center text-sm font-bold text-[#1B3C35] bg-[#E8E9E3] rounded tabular-nums">
-            {setTotal || '-'}
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const currentHole = holes[currentHoleIndex];
+  const currentDiff = currentHole && currentHole.strokes > 0 ? currentHole.strokes - currentHole.par : null;
+  let holeBg = 'bg-white';
+  let scoreLabel = '';
+  if (currentDiff !== null) {
+    if (currentDiff <= -2) { holeBg = 'bg-amber-50'; scoreLabel = 'Eagle!'; }
+    else if (currentDiff === -1) { holeBg = 'bg-[#C96A52]/10'; scoreLabel = 'Birdie!'; }
+    else if (currentDiff === 0) { holeBg = 'bg-[#4A5D23]/10'; scoreLabel = 'Par'; }
+    else if (currentDiff === 1) { holeBg = 'bg-[#1D2D44]/10'; scoreLabel = 'Bogey'; }
+    else { holeBg = 'bg-[#1D2D44]/15'; scoreLabel = `+${currentDiff}`; }
+  }
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 md:p-8 max-w-4xl mx-auto fade-in" data-testid="play-round">
-      <Button variant="ghost" size="sm" className="mb-3 text-[#6B6E66]"
-        onClick={() => { setSelectedTee(null); setHoles([]); setRoundId(null); }} data-testid="back-to-tees">
-        <ArrowLeft className="h-4 w-4 mr-1" /> Change Tee
-      </Button>
+    <div className="min-h-screen p-3 sm:p-6 max-w-lg mx-auto fade-in" data-testid="play-round">
+      {/* Top bar */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <button onClick={() => { setSelectedTee(null); setHoles([]); setRoundId(null); setCurrentHoleIndex(0); }}
+          className="w-10 h-10 rounded-full bg-[#E8E9E3] flex items-center justify-center text-[#1B3C35] active:scale-95"
+          data-testid="back-to-tees">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="flex-1 min-w-0 text-center">
+          <p className="text-[10px] tracking-[0.15em] uppercase font-bold text-[#C96A52]">Now Playing</p>
+          <p className="text-sm font-bold text-[#1B3C35] truncate" style={{ fontFamily: 'Outfit' }}>
+            {selectedCourse.course_name}
+          </p>
+          <p className="text-[10px] text-[#6B6E66]">
+            {selectedTee?.name} Tees · Par {selectedTee?.total_par || selectedCourse.total_par}
+          </p>
+        </div>
+        <button onClick={() => setShowFullCard(true)}
+          className="w-10 h-10 rounded-full bg-[#E8E9E3] flex items-center justify-center text-[#1B3C35] active:scale-95"
+          data-testid="view-full-card-btn" aria-label="View full scorecard">
+          <LayoutGrid className="h-5 w-5" />
+        </button>
+      </div>
 
+      {/* Birdie alerts */}
       {birdieAlerts.length > 0 && (
-        <div className="mb-4 p-3 bg-[#C96A52]/10 border border-[#C96A52]/20 rounded-lg">
-          <div className="flex items-center gap-2 text-[#C96A52] font-bold text-sm">
-            <Target className="h-4 w-4" />
+        <div className="mb-3 p-2.5 bg-[#C96A52]/10 border border-[#C96A52]/20 rounded-lg">
+          <div className="flex items-center gap-2 text-[#C96A52] font-bold text-xs">
+            <Target className="h-3.5 w-3.5" />
             {birdieAlerts.length} birdie(s) marked in challenges!
           </div>
           <div className="flex flex-wrap gap-1 mt-1">
@@ -295,64 +288,199 @@ export default function PlayRound() {
         </div>
       )}
 
-      <Card className="border-[#E2E3DD] shadow-none">
-        <CardHeader className="pb-2">
-          <div className="flex items-start justify-between flex-wrap gap-2">
-            <div>
-              <p className="text-xs tracking-[0.15em] uppercase font-bold text-[#C96A52]">Now Playing</p>
-              <CardTitle className="text-xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-                {selectedCourse.course_name}
-              </CardTitle>
-              <div className="flex items-center gap-2 mt-1">
-                {selectedTee && (
-                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${getTeeStyle(selectedTee.color)}`}>
-                    {selectedTee.name} Tees
-                  </span>
-                )}
-                <span className="text-sm text-[#6B6E66]">
-                  Par {selectedTee?.total_par || selectedCourse.total_par}
-                  {selectedTee?.total_yardage ? ` · ${selectedTee.total_yardage}y` : ''}
-                </span>
-              </div>
-            </div>
-            {birdieCount > 0 && (
-              <Badge className="bg-[#C96A52] text-white text-xs">
-                <Target className="h-3 w-3 mr-1" />{birdieCount} Birdie{birdieCount > 1 ? 's' : ''}
-              </Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <HoleGrid holeSet={front9} label="Front 9" startIdx={0} />
-          {back9.length > 0 && <HoleGrid holeSet={back9} label="Back 9" startIdx={9} />}
+      {/* Summary strip */}
+      <div className="grid grid-cols-3 gap-2 mb-3 bg-[#E8E9E3]/50 rounded-xl p-2.5">
+        <div className="text-center">
+          <p className="text-[9px] text-[#6B6E66] uppercase font-bold tracking-wider">Total</p>
+          <p className="text-lg font-bold text-[#1B3C35] tabular-nums" style={{ fontFamily: 'Outfit' }}>
+            {totalStrokes || '–'}
+          </p>
+        </div>
+        <div className="text-center">
+          <p className="text-[9px] text-[#6B6E66] uppercase font-bold tracking-wider">To Par</p>
+          <p className={`text-lg font-bold tabular-nums ${played.length > 0 ? scoreClr(toPar) : 'text-[#6B6E66]'}`} style={{ fontFamily: 'Outfit' }}>
+            {played.length > 0 ? formatScore(toPar) : '–'}
+          </p>
+        </div>
+        <div className="text-center">
+          <p className="text-[9px] text-[#6B6E66] uppercase font-bold tracking-wider">Played</p>
+          <p className="text-lg font-bold text-[#1B3C35] tabular-nums" style={{ fontFamily: 'Outfit' }}>
+            {played.length}/{holes.length}
+          </p>
+        </div>
+      </div>
 
-          <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-[#E2E3DD]">
-            <div>
-              <p className="text-xs text-[#6B6E66] uppercase tracking-wider font-bold">Total</p>
-              <p className="text-2xl font-bold text-[#1B3C35] tabular-nums">{totalStrokes || '-'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-[#6B6E66] uppercase tracking-wider font-bold">To Par</p>
-              <p className={`text-2xl font-bold tabular-nums ${played.length > 0 ? scoreClr(toPar) : 'text-[#6B6E66]'}`}>
-                {played.length > 0 ? formatScore(toPar) : '-'}
+      {/* Hole dots (tap to jump) */}
+      <div className="flex gap-1 justify-center mb-3 flex-wrap">
+        {holes.map((h, i) => {
+          const diff = h.strokes > 0 ? h.strokes - h.par : null;
+          let dotColor = 'bg-[#E2E3DD]';
+          if (i === currentHoleIndex) dotColor = 'bg-[#1B3C35] ring-2 ring-[#1B3C35]/30';
+          else if (diff !== null) {
+            if (diff < 0) dotColor = 'bg-[#C96A52]';
+            else if (diff === 0) dotColor = 'bg-[#4A5D23]';
+            else dotColor = 'bg-[#1D2D44]';
+          }
+          const dotLabel = diff === null ? '' : (diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`);
+          return (
+            <button key={i} onClick={() => setCurrentHoleIndex(i)}
+              className={`w-6 h-6 rounded-full ${dotColor} text-[9px] font-bold text-white flex items-center justify-center active:scale-90`}
+              data-testid={`play-dot-${h.hole}`}>
+              {dotLabel}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Current hole card (big stepper) */}
+      {currentHole && (
+        <Card className={`border-[#E2E3DD] shadow-none ${holeBg} transition-colors`}>
+          <CardContent className="py-7 px-4">
+            <div className="text-center mb-5">
+              <p className="text-[10px] text-[#6B6E66] uppercase font-bold tracking-widest">Hole</p>
+              <p className="text-5xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>{currentHole.hole}</p>
+              <p className="text-sm text-[#6B6E66] mt-1">
+                Par {currentHole.par}{currentHole.yardage ? ` · ${currentHole.yardage}y` : ''}
               </p>
             </div>
-            <div className="text-xs text-[#6B6E66]">{played.length}/{holes.length} holes</div>
-          </div>
+            {scoreLabel && (
+              <p className={`text-center text-base font-bold mb-3 ${currentDiff < 0 ? 'text-[#C96A52]' : currentDiff === 0 ? 'text-[#4A5D23]' : 'text-[#1D2D44]'}`}>
+                {scoreLabel}
+              </p>
+            )}
+            <div className="flex items-center justify-center gap-6">
+              <button
+                onClick={() => {
+                  const next = currentHole.strokes === 0 ? Math.max(1, currentHole.par - 1) : Math.max(1, currentHole.strokes - 1);
+                  setHoleStrokes(currentHoleIndex, next);
+                }}
+                className="w-16 h-16 rounded-full bg-[#1B3C35] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
+                data-testid={`play-minus-${currentHole.hole}`}>
+                −
+              </button>
+              <span className="text-5xl font-bold text-[#1B3C35] w-20 text-center tabular-nums" style={{ fontFamily: 'Outfit' }}
+                data-testid={`play-score-${currentHole.hole}`}>
+                {currentHole.strokes === 0
+                  ? '–'
+                  : (currentHole.strokes === currentHole.par
+                    ? '0'
+                    : currentHole.strokes > currentHole.par
+                      ? `+${currentHole.strokes - currentHole.par}`
+                      : `${currentHole.strokes - currentHole.par}`)}
+              </span>
+              <button
+                onClick={() => {
+                  const next = currentHole.strokes === 0 ? currentHole.par : Math.min(15, currentHole.strokes + 1);
+                  setHoleStrokes(currentHoleIndex, next);
+                }}
+                className="w-16 h-16 rounded-full bg-[#C96A52] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
+                data-testid={`play-plus-${currentHole.hole}`}>
+                +
+              </button>
+            </div>
+            <p className="text-center text-[11px] text-[#6B6E66] mt-3">
+              {currentHole.strokes > 0 ? `${currentHole.strokes} strokes` : 'Tap + for par · − for birdie'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
-          <div className="flex flex-wrap gap-3 mt-5">
-            <Button variant="outline" className="border-[#E2E3DD] text-[#1B3C35]" onClick={() => saveRound(false)}
-              disabled={saving} data-testid="save-round-btn">
-              <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save'}
-            </Button>
-            <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => saveRound(true)}
-              disabled={saving || !canFinish} data-testid="finish-round-btn">
-              <Flag className="h-4 w-4 mr-1" />
-              {allFilled ? 'Finish Round' : front9Done ? 'Finish 9 Holes' : `${played.length}/${holes.length} Holes`}
-            </Button>
+      {/* Prev / Next nav */}
+      <div className="flex items-center justify-between mt-4">
+        <Button variant="outline" className="border-[#E2E3DD] h-12 px-4"
+          disabled={currentHoleIndex === 0}
+          onClick={() => setCurrentHoleIndex(currentHoleIndex - 1)}
+          data-testid="play-prev-hole">
+          <ChevronLeft className="h-5 w-5 mr-1" />Prev
+        </Button>
+        <span className="text-sm text-[#6B6E66] tabular-nums">{currentHoleIndex + 1} / {holes.length}</span>
+        {currentHoleIndex < holes.length - 1 ? (
+          <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12 px-4"
+            onClick={() => setCurrentHoleIndex(currentHoleIndex + 1)}
+            data-testid="play-next-hole">
+            Next<ChevronRight className="h-5 w-5 ml-1" />
+          </Button>
+        ) : (
+          <Button className="bg-[#C96A52] hover:bg-[#C96A52]/90 h-12 px-4" onClick={() => saveRound(true)}
+            disabled={saving || !canFinish} data-testid="finish-round-btn">
+            <Flag className="h-5 w-5 mr-1" />{saving ? 'Saving...' : (allFilled ? 'Finish' : front9Done ? 'Finish 9' : `${played.length}/${holes.length}`)}
+          </Button>
+        )}
+      </div>
+
+      {/* Save progress + badges */}
+      <div className="flex items-center justify-between gap-2 mt-3">
+        <Button variant="outline" className="flex-1 border-[#E2E3DD] h-10"
+          onClick={() => saveRound(false)} disabled={saving} data-testid="save-round-btn">
+          <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save Progress'}
+        </Button>
+        {birdieCount > 0 && (
+          <Badge className="bg-[#C96A52] text-white text-xs h-10 px-3">
+            <Target className="h-3.5 w-3.5 mr-1" />{birdieCount} Birdie{birdieCount > 1 ? 's' : ''}
+          </Badge>
+        )}
+      </div>
+
+      {/* Full scorecard modal (read-only grid view) */}
+      <Dialog open={showFullCard} onOpenChange={setShowFullCard}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: 'Outfit' }}>Full Scorecard</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {[{ set: front9, label: 'Front 9', out: 'OUT' }, ...(back9.length > 0 ? [{ set: back9, label: 'Back 9', out: 'IN' }] : [])].map(group => {
+              const setTotal = group.set.filter(h => h.strokes > 0).reduce((s, h) => s + h.strokes, 0);
+              const setPar = group.set.reduce((s, h) => s + h.par, 0);
+              return (
+                <div key={group.label}>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider">{group.label}</h3>
+                    <span className="text-[10px] text-[#6B6E66]">Par {setPar} · Total {setTotal || '–'}</span>
+                  </div>
+                  <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${group.set.length}, 1fr) 2.5rem` }}>
+                    {group.set.map(h => (
+                      <div key={`n${h.hole}`} className="text-center text-[9px] text-[#6B6E66] font-bold">{h.hole}</div>
+                    ))}
+                    <div className="text-center text-[9px] text-[#1B3C35] font-bold bg-[#E8E9E3] rounded">{group.out}</div>
+                    {group.set.map(h => (
+                      <div key={`p${h.hole}`} className="text-center text-[9px] text-[#6B6E66]">P{h.par}</div>
+                    ))}
+                    <div className="text-center text-[9px] text-[#6B6E66] font-bold bg-[#E8E9E3] rounded">{setPar}</div>
+                    {group.set.map((h) => {
+                      const diff = h.strokes > 0 ? h.strokes - h.par : null;
+                      let bg = 'bg-white border-[#E2E3DD] text-[#6B6E66]';
+                      if (diff !== null) {
+                        if (diff <= -2) bg = 'bg-amber-100 border-amber-300 text-amber-700';
+                        else if (diff === -1) bg = 'bg-[#C96A52]/15 border-[#C96A52]/40 text-[#C96A52]';
+                        else if (diff === 0) bg = 'bg-[#4A5D23]/10 border-[#4A5D23]/30 text-[#4A5D23]';
+                        else bg = 'bg-[#1D2D44]/10 border-[#1D2D44]/30 text-[#1D2D44]';
+                      }
+                      return (
+                        <div key={h.hole}
+                          className={`h-9 text-center text-xs font-bold rounded border ${bg} flex items-center justify-center`}>
+                          {h.strokes > 0 ? h.strokes : '–'}
+                        </div>
+                      );
+                    })}
+                    <div className="h-9 flex items-center justify-center text-xs font-bold text-[#1B3C35] bg-[#E8E9E3] rounded tabular-nums">
+                      {setTotal || '–'}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="pt-2 border-t border-[#E2E3DD] flex items-center justify-between text-sm">
+              <span className="font-bold text-[#1B3C35]">Round Total</span>
+              <span className="font-bold text-[#1B3C35] tabular-nums">
+                {totalStrokes || '–'}{played.length > 0 ? ` (${formatScore(toPar)})` : ''}
+              </span>
+            </div>
+            <p className="text-[10px] text-center text-[#6B6E66]">
+              Tap a hole number on the main screen to jump to it.
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
