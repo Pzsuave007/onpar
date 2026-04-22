@@ -26,7 +26,7 @@
     "/app/test_reports/pytest/test_log_round.xml"
   ],
   "action_items": [
-    "REMINDER (per main-agent note): /app/frontend/.env is pointing to https://par-tracker-preview.preview.emergentagent.com. Restore to https://onparlive.com before bash build_prod.sh.",
+    "REMINDER (per main-agent note): /app/frontend/.env is pointing to https://par-tracker-mobile.preview.emergentagent.com. Restore to https://onparlive.com before bash build_prod.sh.",
     "Optional: ChallengeDetail Add Round carousel was not exercised end-to-end with stepper clicks because course selection step blocked the flow in the test session — code is byte-identical pattern to LiveScorer (verified by inspection lines 177-232) which fully passed."
   ],
   "critical_code_review_comments": [
