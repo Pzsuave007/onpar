@@ -69,6 +69,22 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 - File touched: `/app/frontend/src/App.js` (removed 1 line).
 - Verified by reproducing the bug via Playwright (captured the 404 PUT request to `/tournaments/undefined` and the toast) before applying the fix; rebuilt with `bash build_prod.sh` (new bundle: `main.1910f1da.js`). User must Save to GitHub and run `fix.sh` on the Apache server to deploy.
 
+### Phase 12 - Match Play & Random Scorer Formats (Apr 22, 2026) ✅
+- **Match Play (Bracket 1v1 with elimination)** — enabled `team_format='match_play'` end-to-end.
+  - New collection: `matches` with fields `match_id, tournament_id, bracket_round, round_label, match_index, player1_id, player2_id, winner_id, status, player1_holes, player2_holes, player1_points, player2_points, is_bye`.
+  - Hole-by-hole scoring: lower strokes = 1 pt, tie = 0.5 / 0.5. Match auto-completes when all holes scored; winner advances automatically to the next round.
+  - Random bracket generation on demand. Any N ≥ 2 players supported; odd N → one bye picked randomly (auto-advances).
+  - Endpoints: POST /api/tournaments/{id}/bracket/generate, GET /api/tournaments/{id}/bracket, POST /api/tournaments/{id}/matches/{match_id}/score, GET /api/tournaments/{id}/matches/mine.
+  - Frontend: `/tournament/:id/bracket` page with bracket visualization, admin "Generate Bracket" / "Re-shuffle", score entry dialog, champion banner.
+- **Random Scorer (Cross-scoring)** — enabled `team_format='random_scorer'` end-to-end.
+  - Each registered player is placed in a single shuffle cycle (A→B→C→…→A). Nobody scores themselves. Every player is scored by exactly one and scores exactly one.
+  - Stored as `score_assignments: [{scorer_user_id, target_user_id}]` on the tournament doc.
+  - POST /api/scorecards/keeper enforces scorer/target match for non-admins when `team_format='random_scorer'`.
+  - Endpoints: POST /api/tournaments/{id}/scorer-assignments/shuffle, GET /api/tournaments/{id}/scorer-assignments (with `my_target` for caller).
+  - Frontend: `/tournament/:id/scorer-assignments` page shows "You're scoring: X" card and all pairings; "Shuffle" button for admin; LiveScorer now shows only the assigned target for non-admins.
+- Files touched: `/app/backend/server.py` (+~250 lines, random import); `/app/frontend/src/App.js` (2 new routes); new files `Bracket.js`, `ScorerAssignments.js`; minor edits to `TournamentEdit.js` (enabled options + redirect logic) and `LiveScorer.js` (Random Scorer target handling).
+- TESTED: iteration_7.json — backend 10/10 (pytest on localhost), frontend regression pass for Phase-11 fix. New-feature pages cannot be E2E-tested on production yet because onparlive.com is serving the OLD bundle (user must deploy).
+
 ## Admin Credentials
 - Email: admin@fairway.com / Password: FairwayAdmin123!
 - Email: pzsuave007@gmail.com / Password: MXmedia007 (primary admin)
@@ -99,18 +115,19 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 
 ## Prioritized Backlog
 ### P0
-- Translate UI to Spanish (user's native language) — repeatedly pushed back, scheduled next after tournament formats rollout
-- Implement remaining tournament formats: Match Play (bracket 1v1, half points on ties, elimination) and Random Scorer (random scorekeeper per group)
+- Translate UI to Spanish (user's native language) — next priority after deploy of Phase 12
 
 ### P1
 - Dedicated Round History page with filters (course, date range)
 - Tournament stats on leaderboard (course average, hardest hole, best round)
+- UX polish: replace native date inputs in TournamentEdit with shadcn Calendar component
+- MatchScoreSubmit: add length validation (player1_holes / player2_holes / pars must all equal tournament.num_holes)
 
 ### P2
 - More game types (Closest to Pin, Longest Drive)
 - Auto-submit casual rounds to active Virtual Tour on completion
 - Notification badges when a new photo is posted in a user's challenge/tournament
-- Refactor: Split server.py (~2100 lines) into routers/ and models/
+- Refactor: Split server.py (~1900+ lines) into routers/ and models/
 - Shared helper for `rounds` insert logic used by POST /rounds and POST /challenges/{id}/log-round (code drift risk)
 
 ## 3rd Party Integrations
