@@ -24,6 +24,7 @@ export default function PlayerDashboard() {
   const [stats, setStats] = useState(null);
   const [tournaments, setTournaments] = useState([]);
   const [myRegistrations, setMyRegistrations] = useState([]);
+  const [myPhotos, setMyPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarRef = useRef(null);
@@ -32,11 +33,13 @@ export default function PlayerDashboard() {
     Promise.all([
       axios.get(`${API}/profile/stats`).catch(() => ({ data: null })),
       axios.get(`${API}/tournaments`).catch(() => ({ data: [] })),
-      axios.get(`${API}/registrations/my`).catch(() => ({ data: [] }))
-    ]).then(([sRes, tRes, rRes]) => {
+      axios.get(`${API}/registrations/my`).catch(() => ({ data: [] })),
+      axios.get(`${API}/profile/photos?limit=6`).catch(() => ({ data: [] }))
+    ]).then(([sRes, tRes, rRes, pRes]) => {
       setStats(sRes.data);
       setTournaments(tRes.data);
       setMyRegistrations(rRes.data);
+      setMyPhotos(pRes.data || []);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -247,6 +250,40 @@ export default function PlayerDashboard() {
                 </Badge>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* My Photos (recent shared photos across tournaments + challenges) */}
+      {myPhotos.length > 0 && (
+        <div className="mb-5" data-testid="dashboard-photos">
+          <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">
+            <Camera className="h-3.5 w-3.5 inline mr-1" />My Photos
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {myPhotos.map(p => {
+              const href = p.scope_type === 'challenge'
+                ? `/challenges/${p.scope_id}`
+                : `/leaderboard/${p.scope_id}`;
+              return (
+                <Link key={p.photo_id} to={href}
+                  className="relative aspect-square rounded-lg overflow-hidden bg-[#E8E9E3] group"
+                  data-testid={`dashboard-photo-${p.photo_id}`}>
+                  {p.url_path ? (
+                    <img src={p.url_path} alt={p.caption || ''} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  ) : (
+                    <div className="flex items-center justify-center w-full h-full">
+                      <Camera className="h-6 w-6 text-[#6B6E66]" />
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+                    <p className="text-[9px] text-white font-medium truncate">
+                      {p.scope_type === 'challenge' ? (p.challenge_name || 'Challenge') : 'Tournament'}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { toast } from 'sonner';
 import { ArrowLeft, UserPlus, Save, Trophy, Check, Share2, Camera, Pencil, Trash2, X, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import TournamentFeed from '@/components/TournamentFeed';
+import PlayerAvatar from '@/components/PlayerAvatar';
 
 function calcStableford(strokes, par) {
   if (strokes === 0) return 0;
@@ -305,9 +306,10 @@ export default function LiveScorer() {
                 variant={r.user_id === selectedPlayer ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => switchPlayer(r.user_id)}
-                className={`shrink-0 ${r.user_id === selectedPlayer ? 'bg-[#1B3C35] hover:bg-[#1B3C35]/90' : 'border-[#E2E3DD] text-[#1B3C35]'}`}
+                className={`shrink-0 pl-1.5 pr-3 ${r.user_id === selectedPlayer ? 'bg-[#1B3C35] hover:bg-[#1B3C35]/90' : 'border-[#E2E3DD] text-[#1B3C35]'}`}
                 data-testid={`player-tab-${r.user_id}`}
               >
+                <PlayerAvatar name={r.player_name} url={r.avatar_url} size="xs" className="mr-1.5" />
                 {r.player_name}
               </Button>
             ))}
@@ -490,9 +492,10 @@ export default function LiveScorer() {
                   <div key={s.user_id}
                     className={`flex items-center justify-between px-4 py-2.5 border-b border-[#E2E3DD] last:border-0 ${s.user_id === selectedPlayer ? 'bg-[#E8E9E3]/50' : ''}`}
                     data-testid={`standing-${i}`}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-[#1B3C35] w-6 tabular-nums">{i + 1}</span>
-                      <span className="text-sm font-medium text-[#1B3C35]">{s.player_name}</span>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-sm font-bold text-[#1B3C35] w-5 tabular-nums shrink-0">{i + 1}</span>
+                      <PlayerAvatar name={s.player_name} url={s.avatar_url} size="xs" />
+                      <span className="text-sm font-medium text-[#1B3C35] truncate">{s.player_name}</span>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className={`text-sm font-bold tabular-nums ${scoreClr(s.toPar)}`}>

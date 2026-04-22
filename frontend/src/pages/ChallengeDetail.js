@@ -5,8 +5,11 @@ import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Target, Trophy, MapPin, Check, Save, Share2, CirclePlay, Trash2, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ArrowLeft, Target, Trophy, MapPin, Check, Save, Share2, CirclePlay, Trash2, ChevronLeft, ChevronRight, Plus, Images } from 'lucide-react';
+import PlayerAvatar from '@/components/PlayerAvatar';
+import PhotoFeed from '@/components/PhotoFeed';
 
 export default function ChallengeDetail() {
   const { challengeId } = useParams();
@@ -399,21 +402,34 @@ export default function ChallengeDetail() {
         </Card>
       )}
 
-      {/* Progress Leaderboard */}
-      <Card className="border-[#E2E3DD] shadow-none mb-5">
-        <CardHeader className="py-3 bg-[#1B3C35] rounded-t-xl">
-          <CardTitle className="text-white text-sm font-bold uppercase tracking-wider flex items-center gap-2">
-            <Trophy className="h-4 w-4" /> Leaderboard
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
+      {/* Tabs: Progress vs Photos (only participants see Photos) */}
+      <Tabs defaultValue="progress" className="w-full">
+        <TabsList className="w-full grid grid-cols-2 mb-4 bg-[#E8E9E3]">
+          <TabsTrigger value="progress" data-testid="challenge-tab-progress">
+            <Trophy className="h-4 w-4 mr-1" />Progress
+          </TabsTrigger>
+          <TabsTrigger value="photos" disabled={!isParticipant && !isAdmin} data-testid="challenge-tab-photos">
+            <Images className="h-4 w-4 mr-1" />Photos
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="progress" className="mt-0">
+          {/* Progress Leaderboard */}
+          <Card className="border-[#E2E3DD] shadow-none mb-5">
+            <CardHeader className="py-3 bg-[#1B3C35] rounded-t-xl">
+              <CardTitle className="text-white text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+                <Trophy className="h-4 w-4" /> Leaderboard
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
           {sortedParticipants.map((p, i) => {
             const pct = challenge.total_holes > 0 ? Math.round(((p.completed_holes || 0) / challenge.total_holes) * 100) : 0;
             return (
               <div key={p.user_id} className="px-4 py-3 border-b border-[#E2E3DD] last:border-0">
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="text-sm font-bold text-[#1B3C35] w-6 tabular-nums">{i + 1}</span>
+                    <span className="text-sm font-bold text-[#1B3C35] w-5 tabular-nums shrink-0">{i + 1}</span>
+                    <PlayerAvatar name={p.player_name} url={p.avatar_url} size="sm" />
                     <span className="font-medium text-[#1B3C35] truncate">{p.player_name}</span>
                     {p.user_id === challenge.winner_id && <Trophy className="h-4 w-4 text-amber-500 shrink-0" />}
                   </div>
@@ -460,8 +476,11 @@ export default function ChallengeDetail() {
                 return (
                   <div key={p.user_id} className="py-2.5 border-b border-[#E2E3DD] last:border-0">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-[#1B3C35] truncate">{p.player_name}</span>
-                      <span className="text-xs font-bold text-[#C96A52] tabular-nums">{birdieCount}/{course.holes?.length}</span>
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <PlayerAvatar name={p.player_name} url={p.avatar_url} size="xs" />
+                        <span className="text-sm font-medium text-[#1B3C35] truncate">{p.player_name}</span>
+                      </div>
+                      <span className="text-xs font-bold text-[#C96A52] tabular-nums shrink-0 ml-2">{birdieCount}/{course.holes?.length}</span>
                     </div>
                     {/* Front 9 */}
                     <div className="grid grid-cols-9 gap-1 mb-1">
@@ -522,6 +541,12 @@ export default function ChallengeDetail() {
           </Card>
         );
       })}
+        </TabsContent>
+
+        <TabsContent value="photos" className="mt-0">
+          <PhotoFeed scopeType="challenge" scopeId={challengeId} canPost={isParticipant || isAdmin} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

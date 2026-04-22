@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Flag, MapPin, Target, ChevronLeft, ChevronRight, LayoutGrid } from 'lucide-react';
+import { ArrowLeft, Save, Flag, MapPin, Target, ChevronLeft, ChevronRight, LayoutGrid, Camera } from 'lucide-react';
+import PhotoShareSheet from '@/components/PhotoShareSheet';
 
 const TEE_COLORS = {
   black: 'bg-gray-900 text-white',
@@ -37,6 +38,7 @@ export default function PlayRound() {
   const [birdieAlerts, setBirdieAlerts] = useState([]);
   const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
   const [showFullCard, setShowFullCard] = useState(false);
+  const [showPhotoShare, setShowPhotoShare] = useState(false);
 
   useEffect(() => {
     axios.get(`${API}/courses`).then(res => {
@@ -412,14 +414,25 @@ export default function PlayRound() {
       <div className="flex items-center justify-between gap-2 mt-3">
         <Button variant="outline" className="flex-1 border-[#E2E3DD] h-10"
           onClick={() => saveRound(false)} disabled={saving} data-testid="save-round-btn">
-          <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save Progress'}
+          <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save'}
+        </Button>
+        <Button variant="outline" className="flex-1 border-[#C96A52] text-[#C96A52] hover:bg-[#C96A52]/10 h-10"
+          onClick={() => setShowPhotoShare(true)} data-testid="play-share-photo-btn">
+          <Camera className="h-4 w-4 mr-1" />Share Photo
         </Button>
         {birdieCount > 0 && (
-          <Badge className="bg-[#C96A52] text-white text-xs h-10 px-3">
-            <Target className="h-3.5 w-3.5 mr-1" />{birdieCount} Birdie{birdieCount > 1 ? 's' : ''}
+          <Badge className="bg-[#C96A52] text-white text-xs h-10 px-3 shrink-0">
+            <Target className="h-3.5 w-3.5 mr-1" />{birdieCount}
           </Badge>
         )}
       </div>
+
+      {/* Multi-destination photo share sheet */}
+      <PhotoShareSheet
+        open={showPhotoShare}
+        onOpenChange={setShowPhotoShare}
+        courseId={selectedCourse?.course_id}
+      />
 
       {/* Full scorecard modal (read-only grid view) */}
       <Dialog open={showFullCard} onOpenChange={setShowFullCard}>

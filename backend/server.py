@@ -533,6 +533,7 @@ async def get_tournament_roster(tournament_id: str):
         roster.append({
             "user_id": r["user_id"], "player_name": r["player_name"],
             "auth_type": u.get("auth_type", "unknown"),
+            "avatar_url": u.get("avatar_url") or u.get("picture"),
             "registered_at": r["registered_at"]
         })
     return roster
@@ -645,6 +646,7 @@ async def get_leaderboard(tournament_id: str, request: Request):
             players[uid] = {
                 "user_id": uid, "player_name": sc["player_name"],
                 "picture": u.get("picture"),
+                "avatar_url": u.get("avatar_url") or u.get("picture"),
                 "rounds": [], "total_strokes": 0, "total_to_par": 0,
                 "stableford_points": 0, "thru": "0"
             }
@@ -1247,10 +1249,26 @@ async def get_challenge(challenge_id: str):
             "course_id": p["course_id"], "hole_number": p["hole_number"],
             "strokes": p["strokes"], "completed_at": p["completed_at"]
         })
+    # Bulk load avatar_url + picture for all participants
+    user_ids = [p["user_id"] for p in ch.get("participants", [])]
+    avatars = await _get_avatars_for(user_ids)
     for p in ch.get("participants", []):
         p["completed_holes"] = len(progress_map.get(p["user_id"], []))
         p["birdied_holes"] = progress_map.get(p["user_id"], [])
+        p["avatar_url"] = avatars.get(p["user_id"])
     return ch
+
+
+async def _get_avatars_for(user_ids):
+    """Return {user_id: avatar_url} mapping. Prefers `avatar_url` uploaded via
+    POST /api/profile/avatar, falls back to the OAuth `picture`."""
+    if not user_ids:
+        return {}
+    users = await db.users.find(
+        {"user_id": {"$in": list(set(user_ids))}},
+        {"_id": 0, "user_id": 1, "avatar_url": 1, "picture": 1}
+    ).to_list(500)
+    return {u["user_id"]: u.get("avatar_url") or u.get("picture") for u in users}
 
 @api_router.get("/challenges/invite/{invite_code}")
 async def get_challenge_by_invite(invite_code: str):
@@ -1628,11 +1646,18 @@ async def get_feed(tournament_id: str, request: Request):
     photos = await db.tournament_feed.find(
         {"tournament_id": tournament_id}, {"_id": 0}
     ).sort("created_at", -1).to_list(100)
+    # Enrich with fresh avatar_url so changes to profile pic propagate
+    avatars = await _get_avatars_for([p["user_id"] for p in photos])
+    for p in photos:
+        p["avatar_url"] = avatars.get(p["user_id"]) or p.get("picture")
     return photos
 
 @api_router.get("/feed/photo/{photo_id}")
 async def serve_feed_photo(photo_id: str):
     record = await db.tournament_feed.find_one({"photo_id": photo_id}, {"_id": 0})
+    if not record:
+        # Fall through to challenge feed
+        record = await db.challenge_feed.find_one({"photo_id": photo_id}, {"_id": 0})
     if not record:
         raise HTTPException(status_code=404, detail="Photo not found")
     try:
@@ -1645,6 +1670,235 @@ async def serve_feed_photo(photo_id: str):
     except Exception as e:
         logger.error(f"Photo read failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to load photo")
+
+
+# --- Challenge Feed (Photo Feed for Birdie Challenges) ---
+async def _check_challenge_participant(challenge_id: str, user_id: str):
+    ch = await db.challenges.find_one({"challenge_id": challenge_id}, {"_id": 0})
+    if not ch:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    if not any(p["user_id"] == user_id for p in ch.get("participants", [])):
+        return ch, False
+    return ch, True
+
+
+@api_router.post("/challenges/{challenge_id}/feed")
+async def upload_challenge_photo(challenge_id: str, request: Request, file: UploadFile = File(...), caption: str = Form("")):
+    user = await get_current_user(request)
+    ch, is_participant = await _check_challenge_participant(challenge_id, user["user_id"])
+    is_admin = user.get("role") == "admin"
+    if not is_participant and not is_admin:
+        raise HTTPException(status_code=403, detail="Only participants can post photos")
+    data = await file.read()
+    if len(data) > MAX_PHOTO_SIZE:
+        raise HTTPException(status_code=400, detail="Photo too large (max 10MB)")
+    content_type = file.content_type or "image/jpeg"
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only images allowed")
+    try:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
+        max_dim = 1200
+        if max(img.width, img.height) > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format='WEBP', quality=70)
+        data = buf.getvalue()
+        content_type = "image/webp"
+    except Exception:
+        pass
+    ext = "webp" if content_type == "image/webp" else "jpg"
+    subpath = f"challenge_feed/{challenge_id}/{uuid.uuid4().hex}.{ext}"
+    try:
+        url_path = save_local_file(subpath, data)
+    except Exception as e:
+        logger.error(f"File save failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save photo")
+    photo_id = f"cphoto_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "photo_id": photo_id,
+        "challenge_id": challenge_id,
+        "challenge_name": ch.get("name", ""),
+        "user_id": user["user_id"],
+        "player_name": user["name"],
+        "picture": user.get("picture"),
+        "caption": caption.strip()[:280] if caption else "",
+        "storage_path": subpath,
+        "url_path": url_path,
+        "content_type": content_type,
+        "size": len(data),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.challenge_feed.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/challenges/{challenge_id}/feed")
+async def get_challenge_feed(challenge_id: str, request: Request):
+    user = await get_current_user(request)
+    _, is_participant = await _check_challenge_participant(challenge_id, user["user_id"])
+    is_admin = user.get("role") == "admin"
+    if not is_participant and not is_admin:
+        raise HTTPException(status_code=403, detail="Only participants can view the challenge feed")
+    photos = await db.challenge_feed.find(
+        {"challenge_id": challenge_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    avatars = await _get_avatars_for([p["user_id"] for p in photos])
+    for p in photos:
+        p["avatar_url"] = avatars.get(p["user_id"]) or p.get("picture")
+    return photos
+
+
+@api_router.post("/photos/broadcast")
+async def broadcast_photo(request: Request, file: UploadFile = File(...), caption: str = Form(""),
+                          targets: str = Form("")):
+    """Upload a photo once and publish it to multiple challenges or tournaments.
+
+    `targets` is a comma-separated list like:
+        challenge:chal_abc123,tournament:tour_xyz789
+    The uploader must be a participant (or admin) of every target, or the
+    request is rejected with 403 before anything is saved to disk.
+    """
+    user = await get_current_user(request)
+    entries = [t.strip() for t in (targets or "").split(",") if t.strip()]
+    if not entries:
+        raise HTTPException(status_code=400, detail="No targets specified")
+    # Validate access to every target first
+    valid = []
+    is_admin = user.get("role") == "admin"
+    for entry in entries:
+        if ":" not in entry:
+            continue
+        kind, obj_id = entry.split(":", 1)
+        if kind == "challenge":
+            ch = await db.challenges.find_one({"challenge_id": obj_id}, {"_id": 0})
+            if not ch:
+                continue
+            if not is_admin and not any(p["user_id"] == user["user_id"] for p in ch.get("participants", [])):
+                raise HTTPException(status_code=403, detail=f"Not a participant in {ch.get('name', obj_id)}")
+            valid.append(("challenge", obj_id, ch.get("name", "")))
+        elif kind == "tournament":
+            t = await db.tournaments.find_one({"tournament_id": obj_id}, {"_id": 0})
+            if not t:
+                continue
+            reg = await db.registrations.find_one({"tournament_id": obj_id, "user_id": user["user_id"]})
+            if not is_admin and not reg:
+                raise HTTPException(status_code=403, detail=f"Not registered in {t.get('name', obj_id)}")
+            valid.append(("tournament", obj_id, t.get("name", "")))
+    if not valid:
+        raise HTTPException(status_code=400, detail="No valid targets")
+    # Read + compress the image once
+    data = await file.read()
+    if len(data) > MAX_PHOTO_SIZE:
+        raise HTTPException(status_code=400, detail="Photo too large (max 10MB)")
+    content_type = file.content_type or "image/jpeg"
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only images allowed")
+    try:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
+        if max(img.width, img.height) > 1200:
+            img.thumbnail((1200, 1200), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format='WEBP', quality=70)
+        data = buf.getvalue()
+        content_type = "image/webp"
+    except Exception:
+        pass
+    ext = "webp" if content_type == "image/webp" else "jpg"
+    subpath = f"broadcast/{user['user_id']}/{uuid.uuid4().hex}.{ext}"
+    try:
+        url_path = save_local_file(subpath, data)
+    except Exception as e:
+        logger.error(f"File save failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save photo")
+    # Fan-out inserts
+    now = datetime.now(timezone.utc).isoformat()
+    clean_caption = (caption or "").strip()[:280]
+    posted = []
+    for kind, obj_id, obj_name in valid:
+        if kind == "challenge":
+            photo_id = f"cphoto_{uuid.uuid4().hex[:12]}"
+            await db.challenge_feed.insert_one({
+                "photo_id": photo_id, "challenge_id": obj_id, "challenge_name": obj_name,
+                "user_id": user["user_id"], "player_name": user["name"],
+                "picture": user.get("picture"), "caption": clean_caption,
+                "storage_path": subpath, "url_path": url_path,
+                "content_type": content_type, "size": len(data), "created_at": now
+            })
+            posted.append({"type": "challenge", "id": obj_id, "name": obj_name, "photo_id": photo_id})
+        else:
+            photo_id = f"photo_{uuid.uuid4().hex[:12]}"
+            await db.tournament_feed.insert_one({
+                "photo_id": photo_id, "tournament_id": obj_id,
+                "user_id": user["user_id"], "player_name": user["name"],
+                "picture": user.get("picture"), "caption": clean_caption,
+                "storage_path": subpath, "url_path": url_path,
+                "content_type": content_type, "size": len(data), "created_at": now
+            })
+            posted.append({"type": "tournament", "id": obj_id, "name": obj_name, "photo_id": photo_id})
+    return {"posted": posted, "count": len(posted)}
+
+
+@api_router.get("/profile/photos")
+async def get_my_photos(request: Request, limit: int = 12):
+    """Recent photos I've posted across tournaments + challenges — mini gallery."""
+    user = await get_current_user(request)
+    t_photos = await db.tournament_feed.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
+    c_photos = await db.challenge_feed.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
+    all_photos = []
+    for p in t_photos:
+        p["scope_type"] = "tournament"
+        p["scope_id"] = p.get("tournament_id")
+        all_photos.append(p)
+    for p in c_photos:
+        p["scope_type"] = "challenge"
+        p["scope_id"] = p.get("challenge_id")
+        all_photos.append(p)
+    all_photos.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return all_photos[:limit]
+
+
+@api_router.get("/profile/photo-targets")
+async def get_my_photo_targets(request: Request):
+    """Return challenges + tournaments the user can post to (active only)."""
+    user = await get_current_user(request)
+    is_admin = user.get("role") == "admin"
+    targets = []
+    # Active challenges
+    ch_query = {"status": "active"}
+    if not is_admin:
+        ch_query["participants.user_id"] = user["user_id"]
+    active_ch = await db.challenges.find(ch_query, {"_id": 0}).to_list(200)
+    for c in active_ch:
+        targets.append({
+            "type": "challenge",
+            "id": c["challenge_id"],
+            "name": c.get("name", "Challenge"),
+            "course_ids": c.get("course_ids", [])
+        })
+    # Registered tournaments
+    if is_admin:
+        tournaments = await db.tournaments.find({"status": {"$ne": "completed"}}, {"_id": 0}).to_list(200)
+    else:
+        regs = await db.registrations.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(500)
+        t_ids = [r["tournament_id"] for r in regs]
+        tournaments = await db.tournaments.find(
+            {"tournament_id": {"$in": t_ids}, "status": {"$ne": "completed"}}, {"_id": 0}
+        ).to_list(200)
+    for t in tournaments:
+        targets.append({
+            "type": "tournament",
+            "id": t["tournament_id"],
+            "name": t.get("name", "Tournament"),
+            "course_name": t.get("course_name", "")
+        })
+    return targets
 
 # Include router
 app.include_router(api_router)
@@ -1677,6 +1931,10 @@ async def startup():
     await db.challenge_progress.create_index([("challenge_id", 1), ("user_id", 1), ("course_id", 1), ("hole_number", 1)], unique=True)
     await db.tournament_feed.create_index([("tournament_id", 1), ("created_at", -1)])
     await db.tournament_feed.create_index("photo_id", unique=True)
+    await db.challenge_feed.create_index([("challenge_id", 1), ("created_at", -1)])
+    await db.challenge_feed.create_index("photo_id", unique=True)
+    await db.challenge_feed.create_index([("user_id", 1), ("created_at", -1)])
+    await db.tournament_feed.create_index([("user_id", 1), ("created_at", -1)])
     logger.info("Database indexes created")
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     logger.info(f"Upload directory: {UPLOAD_DIR}")
