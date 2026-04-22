@@ -1535,7 +1535,7 @@ async def scan_scorecard(request: Request):
 
 @api_router.post("/courses")
 async def save_course(request: Request):
-    user = await get_admin_user(request)
+    user = await get_current_user(request)
     body = await request.json()
     course_id = f"course_{uuid.uuid4().hex[:12]}"
     tees = body.get("tees", [])
@@ -1624,7 +1624,7 @@ Double check that total_par and total_yardage match the sum of individual holes.
 
 @api_router.post("/courses/search")
 async def ai_search_course(request: Request):
-    await get_admin_user(request)
+    await get_current_user(request)
     body = await request.json()
     query = body.get("query", "").strip()
     if not query:
@@ -2186,10 +2186,166 @@ async def list_tours(request: Request):
 
 @api_router.get("/tours/invite/{invite_code}")
 async def get_tour_by_invite(invite_code: str):
-    tour = await db.tours.find_one({"invite_code": invite_code.upper()}, {"_id": 0})
+    code = invite_code.upper()
+    # First check personal tour invites
+    personal = await db.tour_invites.find_one({"code": code}, {"_id": 0})
+    if personal:
+        tour = await db.tours.find_one({"tour_id": personal["tour_id"]}, {"_id": 0})
+        if not tour:
+            raise HTTPException(status_code=404, detail="Tour not found")
+        personal["tour"] = {
+            "tour_id": tour["tour_id"], "name": tour["name"],
+            "description": tour.get("description", ""),
+            "num_rounds": tour.get("num_rounds"),
+            "scoring_format": tour.get("scoring_format"),
+            "suggested_course_name": tour.get("suggested_course_name", "")
+        }
+        return personal
+    # Fall back to tour-wide invite code
+    tour = await db.tours.find_one({"invite_code": code}, {"_id": 0})
     if not tour:
         raise HTTPException(status_code=404, detail="Invalid invite code")
     return tour
+
+
+@api_router.post("/tours/{tour_id}/invites")
+async def create_tour_invite(tour_id: str, request: Request):
+    """Creator/admin creates a pre-assigned invite slot (optional player name + course)."""
+    user = await get_current_user(request)
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour:
+        raise HTTPException(status_code=404, detail="Tour not found")
+    is_admin = user.get("role") == "admin"
+    if not is_admin and tour.get("created_by") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only creator or admin")
+    body = await request.json()
+    player_name = (body.get("player_name") or "").strip()[:60]
+    course_id = body.get("course_id") or None
+    course_name = body.get("course_name") or ""
+    if course_id and not course_name:
+        c = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0, "course_name": 1})
+        if c: course_name = c.get("course_name", "")
+    # Unique code that doesn't collide with existing
+    for _ in range(5):
+        code = uuid.uuid4().hex[:8].upper()
+        existing = await db.tour_invites.find_one({"code": code}) or await db.tours.find_one({"invite_code": code})
+        if not existing:
+            break
+    invite_id = f"tinv_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "invite_id": invite_id, "tour_id": tour_id, "code": code,
+        "player_name": player_name, "course_id": course_id, "course_name": course_name,
+        "status": "pending", "accepted_by_user_id": None,
+        "created_by": user["user_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.tour_invites.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/tours/{tour_id}/invites")
+async def list_tour_invites(tour_id: str, request: Request):
+    user = await get_current_user(request)
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour:
+        raise HTTPException(status_code=404, detail="Tour not found")
+    is_admin = user.get("role") == "admin"
+    if not is_admin and tour.get("created_by") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only creator or admin")
+    return await db.tour_invites.find({"tour_id": tour_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
+
+
+@api_router.put("/tours/{tour_id}/invites/{invite_id}")
+async def update_tour_invite(tour_id: str, invite_id: str, request: Request):
+    """Update player_name or course assignment on a pending invite."""
+    user = await get_current_user(request)
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour:
+        raise HTTPException(status_code=404, detail="Tour not found")
+    is_admin = user.get("role") == "admin"
+    if not is_admin and tour.get("created_by") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only creator or admin")
+    body = await request.json()
+    updates = {}
+    if "player_name" in body:
+        updates["player_name"] = (body["player_name"] or "").strip()[:60]
+    if "course_id" in body or "course_name" in body:
+        cid = body.get("course_id")
+        cname = body.get("course_name", "")
+        if cid and not cname:
+            c = await db.golf_courses.find_one({"course_id": cid}, {"_id": 0, "course_name": 1})
+            if c: cname = c.get("course_name", "")
+        updates["course_id"] = cid
+        updates["course_name"] = cname
+    if updates:
+        await db.tour_invites.update_one({"invite_id": invite_id}, {"$set": updates})
+    return await db.tour_invites.find_one({"invite_id": invite_id}, {"_id": 0})
+
+
+@api_router.delete("/tours/{tour_id}/invites/{invite_id}")
+async def delete_tour_invite(tour_id: str, invite_id: str, request: Request):
+    user = await get_current_user(request)
+    tour = await db.tours.find_one({"tour_id": tour_id}, {"_id": 0})
+    if not tour:
+        raise HTTPException(status_code=404, detail="Tour not found")
+    is_admin = user.get("role") == "admin"
+    if not is_admin and tour.get("created_by") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only creator or admin")
+    r = await db.tour_invites.delete_one({"invite_id": invite_id, "tour_id": tour_id})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    return {"deleted": invite_id}
+
+
+@api_router.post("/tours/invite/{invite_code}/accept")
+async def accept_tour_invite(invite_code: str, request: Request):
+    """Accept a personal invite: join the tour and set the pre-assigned course.
+    If the invite has no course, the client may follow up with PUT course endpoint."""
+    user = await get_current_user(request)
+    code = invite_code.upper()
+    invite = await db.tour_invites.find_one({"code": code}, {"_id": 0})
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invalid invite")
+    if invite.get("status") == "accepted":
+        raise HTTPException(status_code=400, detail="Invite already used")
+    tour = await db.tours.find_one({"tour_id": invite["tour_id"]}, {"_id": 0})
+    if not tour or tour["status"] != "active":
+        raise HTTPException(status_code=400, detail="Tour not active")
+    # Add participant if not already in
+    if not any(p["user_id"] == user["user_id"] for p in tour.get("participants", [])):
+        if len(tour.get("participants", [])) >= tour.get("max_players", 100):
+            raise HTTPException(status_code=400, detail="Tournament is full")
+        course_id = invite.get("course_id") or tour.get("suggested_course_id")
+        course_name = invite.get("course_name") or tour.get("suggested_course_name", "")
+        await db.tours.update_one(
+            {"tour_id": tour["tour_id"]},
+            {"$push": {"participants": {
+                "user_id": user["user_id"],
+                "player_name": invite.get("player_name") or user["name"],
+                "course_id": course_id, "course_name": course_name,
+                "invite_code": code,
+                "joined_at": datetime.now(timezone.utc).isoformat()
+            }}}
+        )
+    else:
+        # Already joined — if invite carries a course, still apply it
+        if invite.get("course_id"):
+            participants = tour["participants"]
+            for p in participants:
+                if p["user_id"] == user["user_id"]:
+                    p["course_id"] = invite["course_id"]
+                    p["course_name"] = invite.get("course_name", "")
+                    break
+            await db.tours.update_one({"tour_id": tour["tour_id"]}, {"$set": {"participants": participants}})
+    # Mark invite accepted
+    await db.tour_invites.update_one(
+        {"invite_id": invite["invite_id"]},
+        {"$set": {"status": "accepted", "accepted_by_user_id": user["user_id"],
+                  "accepted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"tour_id": tour["tour_id"], "message": "Joined"}
+
 
 @api_router.get("/tours/{tour_id}")
 async def get_tour(tour_id: str):

@@ -99,6 +99,16 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 - Files touched: `/app/backend/server.py` (~+100 lines in create_tour, update_tour, delete_tour, set_participant_course, updated join_tour); `/app/frontend/src/App.js` (2 new routes); new file `VirtualTournamentEdit.js`; cleaned up `Tours.js` (removed showCreateVirtual dialog + unused imports); `TourDetail.js` (+edit button, +description + default course chips, +per-participant course editor dialog, +isAdmin/isCreator detection).
 - Verified via curl against localhost: create, update, participant course assign, list.
 
+### Phase 14 - Personal Invite Links + Self-service Course Add (Apr 22, 2026) ✅
+Solves the "10 players in 4 cities" pain: creator can pre-assign a course per player, send personal invite links; remote players can add their own course on the fly if it's not in the DB.
+- **New collection `tour_invites`**: `{invite_id, tour_id, code (unique 8-char), player_name, course_id, course_name, status, accepted_by_user_id}`.
+- **Endpoints (creator/admin only)**: POST /api/tours/{id}/invites, GET /api/tours/{id}/invites, PUT /api/tours/{id}/invites/{invite_id}, DELETE /api/tours/{id}/invites/{invite_id}. Public: POST /api/tours/invite/{code}/accept, GET /api/tours/invite/{code} (detects personal invite vs tour-wide code).
+- **Accept flow**: authenticated user clicks `/tours/join/{code}` → auto-accepts → joins tour with pre-assigned course & player_name → redirects to `/tours/{tour_id}`. Anonymous users are redirected to `/login?next=...` preserving the invite.
+- **Self-service course add**: POST /api/courses and POST /api/courses/search now accept any authenticated user (previously admin-only). "My course isn't listed — add it" button inside the course picker dialog triggers an inline AI search (GPT-4o web search) → preview → save → auto-select.
+- **Invite Panel UI** in `TourDetail.js` — creator/admin see a collapsible section with a "new invite" form (name + course pre-assign + "Add Course" link) and a live list of existing invites (pending vs accepted, copy-link, delete).
+- Files touched: `/app/backend/server.py` (+170 lines: tour_invites CRUD, public lookup, accept; relaxed POST /courses + /courses/search to any user); `/app/frontend/src/pages/TourDetail.js` (+invite panel, +Add Course dialog, +auto-accept on invite URL).
+- Verified via curl: create 2 invites (one with course pre-assigned, one without), list, public code lookup returns invite+tour meta, accept auto-joins with course applied; non-admin can POST /courses successfully. Build: `main.624e4f29.js`.
+
 ## Admin Credentials
 - Email: admin@fairway.com / Password: FairwayAdmin123!
 - Email: pzsuave007@gmail.com / Password: MXmedia007 (primary admin)
