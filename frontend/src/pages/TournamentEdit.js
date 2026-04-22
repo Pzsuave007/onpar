@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import DatePicker from '@/components/DatePicker';
 import { toast } from 'sonner';
 import { ArrowLeft, Save, Lock, Globe } from 'lucide-react';
 
@@ -172,13 +173,13 @@ export default function TournamentEdit() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-[#1B3C35] text-sm font-bold">Start Date</Label>
-            <Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })}
-              className="mt-1 border-[#E2E3DD] h-12" data-testid="edit-start" />
+            <DatePicker value={form.start_date} onChange={v => setForm({ ...form, start_date: v })}
+              placeholder="Select start date" className="mt-1 w-full" testId="edit-start" />
           </div>
           <div>
             <Label className="text-[#1B3C35] text-sm font-bold">End Date</Label>
-            <Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })}
-              className="mt-1 border-[#E2E3DD] h-12" data-testid="edit-end" />
+            <DatePicker value={form.end_date} onChange={v => setForm({ ...form, end_date: v })}
+              placeholder="Select end date" className="mt-1 w-full" testId="edit-end" />
           </div>
         </div>
 

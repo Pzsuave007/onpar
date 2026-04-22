@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Flag, LayoutDashboard, Shield, LogOut, Menu, X, Target, CirclePlay, Trophy } from 'lucide-react';
 import { useState } from 'react';
+import NotificationBell from '@/components/NotificationBell';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -62,7 +63,8 @@ export default function Navbar() {
 
           <div className="hidden md:flex items-center gap-3">
             {user ? (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <NotificationBell />
                 <span className="text-sm text-[#6B6E66]" data-testid="nav-user-name">{user.name}</span>
                 <Button variant="outline" size="sm" onClick={handleLogout} data-testid="nav-logout-btn"
                   className="border-[#E2E3DD] text-[#1B3C35] hover:bg-[#E8E9E3]">
@@ -76,10 +78,13 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Mobile menu button */}
-          <button className="md:hidden p-2" onClick={() => setMobileOpen(!mobileOpen)} data-testid="nav-mobile-toggle">
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {/* Mobile menu button + bell */}
+          <div className="md:hidden flex items-center gap-1">
+            {user && <NotificationBell />}
+            <button className="p-2" onClick={() => setMobileOpen(!mobileOpen)} data-testid="nav-mobile-toggle">
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile menu */}

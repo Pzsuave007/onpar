@@ -17,7 +17,7 @@ function formatToPar(s) { return s === 0 ? 'E' : s > 0 ? `+${s}` : `${s}`; }
 function scoreClr(s) { return s < 0 ? 'text-[#C96A52] font-bold' : s > 0 ? 'text-[#1D2D44]' : 'text-[#4A5D23] font-bold'; }
 
 export default function TourDetail() {
-  const { tourId, inviteCode } = useParams();
+  const { tourId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [tour, setTour] = useState(null);
@@ -48,33 +48,7 @@ export default function TourDetail() {
 
   const fetchTour = async () => {
     try {
-      let res;
-      if (inviteCode) {
-        res = await axios.get(`${API}/tours/invite/${inviteCode}`);
-        // Personal invite: has invite_id + nested tour meta
-        if (res.data?.invite_id && user) {
-          try {
-            const acc = await axios.post(`${API}/tours/invite/${inviteCode}/accept`);
-            toast.success('Invitation accepted!');
-            navigate(`/tours/${acc.data.tour_id}`, { replace: true });
-            return;
-          } catch (e) {
-            toast.error(e.response?.data?.detail || 'Could not accept invite');
-          }
-        }
-        // Personal invite and NOT logged in → redirect to login with callback
-        if (res.data?.invite_id && !user) {
-          navigate(`/login?next=/tours/join/${inviteCode}`, { replace: true });
-          return;
-        }
-        // Regular tour invite code → open full tour
-        if (res.data?.tour_id) {
-          navigate(`/tours/${res.data.tour_id}`, { replace: true });
-          return;
-        }
-      } else {
-        res = await axios.get(`${API}/tours/${tourId}`);
-      }
+      const res = await axios.get(`${API}/tours/${tourId}`);
       setTour(res.data);
     } catch {
       toast.error('Tournament not found');
@@ -92,7 +66,7 @@ export default function TourDetail() {
     } catch {}
   };
 
-  useEffect(() => { fetchTour(); }, [tourId, inviteCode]);
+  useEffect(() => { fetchTour(); }, [tourId]);
   useEffect(() => { fetchMyRounds(); }, [user]);
   useEffect(() => {
     axios.get(`${API}/courses`).then(r => setCourses(r.data || [])).catch(() => {});
@@ -177,7 +151,10 @@ export default function TourDetail() {
 
   const copyInviteLink = (inv) => {
     const url = `${window.location.origin}/tours/join/${inv.code}`;
-    navigator.clipboard.writeText(url).then(() => toast.success('Link copied!'));
+    const course = inv.course_name ? `Juegas en: ${inv.course_name}\n` : '';
+    const who = inv.player_name ? `Hola ${inv.player_name}! ` : 'Hola! ';
+    const msg = `${who}Te invito al torneo "${tour?.name || 'OnPar Live'}" 🏌️\n${course}Abre este link para unirte:\n${url}`;
+    navigator.clipboard.writeText(msg).then(() => toast.success('Invitación copiada — lista para pegar en WhatsApp/email'));
   };
 
   // Add Course inline (AI search + save)

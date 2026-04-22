@@ -2208,6 +2208,50 @@ async def get_tour_by_invite(invite_code: str):
     return tour
 
 
+# --- In-app notifications ---
+async def _create_notification(user_id: str, notif_type: str, title: str, message: str, link: str = None, meta: dict = None):
+    """Helper to insert a notification doc."""
+    doc = {
+        "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+        "user_id": user_id, "type": notif_type, "title": title, "message": message,
+        "link": link or "", "meta": meta or {},
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.notifications.insert_one(doc)
+    return doc["notification_id"]
+
+
+@api_router.get("/notifications")
+async def list_notifications(request: Request, unread_only: bool = False):
+    user = await get_current_user(request)
+    q = {"user_id": user["user_id"]}
+    if unread_only: q["read"] = False
+    items = await db.notifications.find(q, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    unread = await db.notifications.count_documents({"user_id": user["user_id"], "read": False})
+    return {"items": items, "unread_count": unread}
+
+
+@api_router.post("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, request: Request):
+    user = await get_current_user(request)
+    await db.notifications.update_one(
+        {"notification_id": notification_id, "user_id": user["user_id"]},
+        {"$set": {"read": True, "read_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"ok": True}
+
+
+@api_router.post("/notifications/mark-all-read")
+async def mark_all_notifications_read(request: Request):
+    user = await get_current_user(request)
+    await db.notifications.update_many(
+        {"user_id": user["user_id"], "read": False},
+        {"$set": {"read": True, "read_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"ok": True}
+
+
 @api_router.get("/users/search")
 async def search_users(q: str = "", request: Request = None):
     """Search registered users by name or email (authenticated creators use this
@@ -2263,6 +2307,23 @@ async def create_tour_invite(tour_id: str, request: Request):
     }
     await db.tour_invites.insert_one(doc)
     doc.pop("_id", None)
+    # In-app notification for registered targets
+    if target_user_id and target_user_id != user["user_id"]:
+        try:
+            await _create_notification(
+                user_id=target_user_id,
+                notif_type="tour_invite",
+                title=f"Invitación a {tour.get('name', 'un torneo')}",
+                message=(
+                    f"{user.get('name', 'Alguien')} te invitó"
+                    + (f" a jugar en {course_name}" if course_name else "")
+                    + "."
+                ),
+                link=f"/tours/join/{code}",
+                meta={"tour_id": tour_id, "invite_code": code, "course_name": course_name or ""}
+            )
+        except Exception as e:
+            logger.warning(f"notification create failed: {e}")
     return doc
 
 

@@ -209,9 +209,15 @@ export default function PlayerDashboard() {
       {/* Recent Rounds */}
       {stats?.recent_rounds?.length > 0 && (
         <div className="mb-5">
-          <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider mb-2">
-            <Flame className="h-3.5 w-3.5 inline mr-1 text-[#C96A52]" />Recent Rounds
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-[#6B6E66] uppercase tracking-wider">
+              <Flame className="h-3.5 w-3.5 inline mr-1 text-[#C96A52]" />Recent Rounds
+            </p>
+            <Link to="/history" className="text-[11px] font-bold text-[#C96A52] hover:text-[#1B3C35]"
+              data-testid="view-all-rounds-link">
+              View All →
+            </Link>
+          </div>
           <div className="space-y-1.5">
             {stats.recent_rounds.map((r, i) => (
               <div key={i} className="flex items-center justify-between bg-white rounded-lg border border-[#E2E3DD] px-3 py-2.5">
