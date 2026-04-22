@@ -63,33 +63,32 @@ ok "Frontend deployed (bundle: $FE_HASH)"
 
 #------------------------------------------------------------------
 step "[5/6] Kill old backend"
-# Try graceful then forceful. Match any process related to our server.
-PIDS=$(pgrep -f "uvicorn.*server:app" 2>/dev/null || true)
-PIDS="$PIDS $(pgrep -f "uvicorn.*--port ${PORT}" 2>/dev/null || true)"
-PIDS="$PIDS $(lsof -ti:${PORT} 2>/dev/null || fuser ${PORT}/tcp 2>/dev/null || true)"
-PIDS=$(echo "$PIDS" | tr ' ' '\n' | sort -u | grep -E '^[0-9]+$' || true)
+# Find all candidate PIDs (dedupe)
+PIDS=$( ( pgrep -f "uvicorn.*server:app" 2>/dev/null;
+          pgrep -f "uvicorn.*--port ${PORT}" 2>/dev/null;
+          lsof -ti:${PORT} 2>/dev/null;
+          fuser ${PORT}/tcp 2>/dev/null | tr -s ' ' '\n' ) | grep -E '^[0-9]+$' | sort -u )
 
-if [ -n "$PIDS" ]; then
-  echo "$PIDS" | while read -r pid; do
-    [ -n "$pid" ] && kill -TERM "$pid" 2>/dev/null && echo "  TERM → $pid"
-  done
-  sleep 3
-  # Anyone still alive?
-  STILL=$(echo "$PIDS" | while read -r pid; do [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "$pid"; done)
-  if [ -n "$STILL" ]; then
-    echo "$STILL" | while read -r pid; do
-      [ -n "$pid" ] && kill -KILL "$pid" 2>/dev/null && echo "  KILL → $pid"
-    done
-    sleep 2
-  fi
-else
+if [ -z "$PIDS" ]; then
   warn "No running backend process found (fresh start)"
+else
+  echo "  Found PIDs: $(echo $PIDS | tr '\n' ' ')"
+  # Nuke them directly with -9. No time wasted on graceful shutdown in a deploy.
+  for pid in $PIDS; do
+    kill -9 "$pid" 2>/dev/null && echo "  KILL → $pid" || echo "  already gone: $pid"
+  done
+  # Short wait for OS to release the port
+  sleep 2
 fi
 
-# Final verification: port must be free
-if lsof -ti:${PORT} >/dev/null 2>&1 || fuser ${PORT}/tcp >/dev/null 2>&1; then
-  fail "Port ${PORT} still occupied after kill — manual intervention needed"
-  lsof -ti:${PORT} 2>/dev/null | xargs -r ps -fp
+# Belt-and-suspenders: free the port with fuser -k (fast, never hangs)
+timeout 5 fuser -k ${PORT}/tcp 2>/dev/null || true
+sleep 1
+
+# Final verification with a 5s timeout so we NEVER hang here
+if timeout 5 bash -c "lsof -ti:${PORT} >/dev/null 2>&1"; then
+  fail "Port ${PORT} still occupied — manual intervention needed"
+  timeout 3 lsof -ti:${PORT} 2>/dev/null | xargs -r ps -fp || true
   exit 1
 fi
 ok "Port ${PORT} is free"
