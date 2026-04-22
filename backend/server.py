@@ -2208,6 +2208,22 @@ async def get_tour_by_invite(invite_code: str):
     return tour
 
 
+@api_router.get("/users/search")
+async def search_users(q: str = "", request: Request = None):
+    """Search registered users by name or email (authenticated creators use this
+    when building personal invites). Returns a small, non-sensitive projection."""
+    await get_current_user(request)
+    query = (q or "").strip()
+    if len(query) < 2:
+        return []
+    regex = {"$regex": query, "$options": "i"}
+    users = await db.users.find(
+        {"$or": [{"name": regex}, {"email": regex}]},
+        {"_id": 0, "user_id": 1, "name": 1, "email": 1, "picture": 1}
+    ).limit(10).to_list(10)
+    return users
+
+
 @api_router.post("/tours/{tour_id}/invites")
 async def create_tour_invite(tour_id: str, request: Request):
     """Creator/admin creates a pre-assigned invite slot (optional player name + course)."""
@@ -2220,6 +2236,11 @@ async def create_tour_invite(tour_id: str, request: Request):
         raise HTTPException(status_code=403, detail="Only creator or admin")
     body = await request.json()
     player_name = (body.get("player_name") or "").strip()[:60]
+    target_user_id = body.get("target_user_id") or None
+    # If pointed at an existing user and no explicit name, use their profile name
+    if target_user_id and not player_name:
+        u = await db.users.find_one({"user_id": target_user_id}, {"_id": 0, "name": 1})
+        if u: player_name = u.get("name", "")[:60]
     course_id = body.get("course_id") or None
     course_name = body.get("course_name") or ""
     if course_id and not course_name:
@@ -2234,7 +2255,8 @@ async def create_tour_invite(tour_id: str, request: Request):
     invite_id = f"tinv_{uuid.uuid4().hex[:12]}"
     doc = {
         "invite_id": invite_id, "tour_id": tour_id, "code": code,
-        "player_name": player_name, "course_id": course_id, "course_name": course_name,
+        "player_name": player_name, "target_user_id": target_user_id,
+        "course_id": course_id, "course_name": course_name,
         "status": "pending", "accepted_by_user_id": None,
         "created_by": user["user_id"],
         "created_at": datetime.now(timezone.utc).isoformat()

@@ -9,8 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
-import { ArrowLeft, Trophy, Globe, Users, Share2, Hash, Flag, MapPin, Check, Pencil, Settings, Copy, UserPlus, Search, X, Sparkles } from 'lucide-react';
+import { ArrowLeft, Trophy, Globe, Users, Share2, Hash, Flag, MapPin, Check, Pencil, Settings, Copy, UserPlus, Search, X, Sparkles, User2 } from 'lucide-react';
 
 function formatToPar(s) { return s === 0 ? 'E' : s > 0 ? `+${s}` : `${s}`; }
 function scoreClr(s) { return s < 0 ? 'text-[#C96A52] font-bold' : s > 0 ? 'text-[#1D2D44]' : 'text-[#4A5D23] font-bold'; }
@@ -31,8 +32,12 @@ export default function TourDetail() {
   // Invite panel
   const [invites, setInvites] = useState([]);
   const [showInvitePanel, setShowInvitePanel] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ player_name: '', course_id: 'none' });
+  const [inviteForm, setInviteForm] = useState({ player_name: '', course_id: 'none', target_user_id: null });
   const [creatingInvite, setCreatingInvite] = useState(false);
+  // Registered user search for invites
+  const [userSearchQ, setUserSearchQ] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState([]);
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
   // Inline Add Course (AI search)
   const [showAddCourse, setShowAddCourse] = useState(false);
   const [acQuery, setAcQuery] = useState('');
@@ -107,20 +112,43 @@ export default function TourDetail() {
   }, [tour, user]); // eslint-disable-line
 
   const createInvite = async () => {
-    const { player_name, course_id } = inviteForm;
+    const { player_name, course_id, target_user_id } = inviteForm;
     setCreatingInvite(true);
     try {
       const c = courses.find(x => x.course_id === course_id);
       await axios.post(`${API}/tours/${tour.tour_id}/invites`, {
-        player_name, course_id: course_id === 'none' ? null : course_id,
+        player_name, target_user_id,
+        course_id: course_id === 'none' ? null : course_id,
         course_name: c?.course_name || ''
       });
       toast.success('Invite created');
-      setInviteForm({ player_name: '', course_id: 'none' });
+      setInviteForm({ player_name: '', course_id: 'none', target_user_id: null });
+      setUserSearchQ('');
       loadInvites();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed');
     } finally { setCreatingInvite(false); }
+  };
+
+  // Registered user search (debounced in the UI — keep it simple)
+  const searchRegisteredUsers = async (q) => {
+    setUserSearchQ(q);
+    if (q.trim().length < 2) { setUserSearchResults([]); return; }
+    try {
+      const res = await axios.get(`${API}/users/search`, { params: { q: q.trim() } });
+      // Exclude users already participating
+      const participantIds = new Set((tour?.participants || []).map(p => p.user_id));
+      setUserSearchResults((res.data || []).filter(u => !participantIds.has(u.user_id)));
+    } catch { setUserSearchResults([]); }
+  };
+  const pickRegisteredUser = (u) => {
+    setInviteForm(prev => ({ ...prev, player_name: u.name, target_user_id: u.user_id }));
+    setUserSearchQ(u.name);
+    setUserSearchOpen(false);
+  };
+  const clearPickedUser = () => {
+    setInviteForm(prev => ({ ...prev, player_name: '', target_user_id: null }));
+    setUserSearchQ('');
   };
 
   const deleteInvite = async (inv) => {
@@ -434,10 +462,66 @@ export default function TourDetail() {
             <CardContent className="space-y-3">
               {/* New invite form */}
               <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 p-3 rounded-lg bg-[#E8E9E3]/40 border border-dashed border-[#D6D7D2]">
-                <Input placeholder="Player name (optional)"
-                  value={inviteForm.player_name}
-                  onChange={e => setInviteForm({ ...inviteForm, player_name: e.target.value })}
-                  className="h-10 border-[#E2E3DD] bg-white" data-testid="invite-name-input" />
+                {/* Combobox: search registered user OR type custom name */}
+                <Popover open={userSearchOpen} onOpenChange={setUserSearchOpen}>
+                  <PopoverTrigger asChild>
+                    <div className="relative">
+                      <User2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#6B6E66] pointer-events-none" />
+                      <Input
+                        placeholder="Search registered or type name"
+                        value={userSearchQ}
+                        onFocus={() => setUserSearchOpen(true)}
+                        onChange={e => {
+                          searchRegisteredUsers(e.target.value);
+                          setInviteForm(prev => ({ ...prev, player_name: e.target.value, target_user_id: null }));
+                          setUserSearchOpen(true);
+                        }}
+                        className="h-10 pl-8 border-[#E2E3DD] bg-white"
+                        data-testid="invite-user-search" />
+                      {inviteForm.target_user_id && (
+                        <button type="button" onClick={clearPickedUser}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6B6E66] hover:text-red-500">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0"
+                    align="start"
+                    onOpenAutoFocus={(e) => e.preventDefault()}>
+                    {userSearchResults.length > 0 ? (
+                      <ul className="max-h-60 overflow-auto py-1">
+                        {userSearchResults.map(u => (
+                          <li key={u.user_id}>
+                            <button type="button"
+                              onClick={() => pickRegisteredUser(u)}
+                              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#E8E9E3]/60 text-left"
+                              data-testid={`pick-user-${u.user_id}`}>
+                              {u.picture
+                                ? <img src={u.picture} alt="" className="w-6 h-6 rounded-full object-cover" />
+                                : <div className="w-6 h-6 rounded-full bg-[#1B3C35] text-white text-xs flex items-center justify-center">
+                                    {(u.name || '?')[0].toUpperCase()}
+                                  </div>}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-[#1B3C35] truncate">{u.name}</p>
+                                <p className="text-[10px] text-[#6B6E66] truncate">{u.email}</p>
+                              </div>
+                              <Check className="h-3 w-3 text-[#4A5D23] opacity-0 group-data-[state=checked]:opacity-100" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="px-3 py-3 text-xs text-[#6B6E66]">
+                        {userSearchQ.length < 2
+                          ? 'Type 2+ characters to search registered players…'
+                          : 'No matches — you can still send with this name as a plain invite.'}
+                      </p>
+                    )}
+                  </PopoverContent>
+                </Popover>
+
                 <div className="flex flex-col gap-1">
                   <Select value={inviteForm.course_id || 'none'}
                     onValueChange={v => setInviteForm({ ...inviteForm, course_id: v })}>
@@ -466,6 +550,12 @@ export default function TourDetail() {
                   {creatingInvite ? '...' : 'Create'}
                 </Button>
               </div>
+              {inviteForm.target_user_id && (
+                <p className="text-[11px] text-[#4A5D23] -mt-2 pl-1 flex items-center gap-1">
+                  <Check className="h-3 w-3" />
+                  Linked to registered player — they'll skip signup when accepting.
+                </p>
+              )}
 
               {/* Existing invites */}
               {invites.length === 0 ? (
