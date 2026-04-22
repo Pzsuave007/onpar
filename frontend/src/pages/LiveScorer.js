@@ -46,6 +46,7 @@ export default function LiveScorer() {
   const [editName, setEditName] = useState('');
   const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
   const [dirtyPlayers, setDirtyPlayers] = useState({});
+  const [randomScorerTarget, setRandomScorerTarget] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -57,6 +58,16 @@ export default function LiveScorer() {
       setTournament(tRes.data);
       setRoster(rosterRes.data);
 
+      // For Random Scorer: fetch my assigned target (non-admins score someone else)
+      let rsTargetId = null;
+      if (tRes.data.team_format === 'random_scorer' && user && !isAdmin) {
+        try {
+          const aRes = await axios.get(`${API}/tournaments/${tournamentId}/scorer-assignments`);
+          rsTargetId = aRes.data?.my_target?.user_id || null;
+          setRandomScorerTarget(rsTargetId);
+        } catch {}
+      }
+
       // Pre-load all existing scores
       const scMap = {};
       for (const sc of (scoresRes.data || [])) {
@@ -66,9 +77,17 @@ export default function LiveScorer() {
       setAllPlayerScores(scMap);
 
       if (rosterRes.data.length > 0 && !selectedPlayer) {
-        // Non-admins default to their own row
+        // Random Scorer non-admin → default to their target
+        // Others: non-admins → own row; admin → first
         const myRow = rosterRes.data.find(r => r.user_id === user?.user_id);
-        const firstId = !isAdmin && myRow ? myRow.user_id : rosterRes.data[0].user_id;
+        let firstId;
+        if (rsTargetId) {
+          firstId = rsTargetId;
+        } else if (!isAdmin && myRow) {
+          firstId = myRow.user_id;
+        } else {
+          firstId = rosterRes.data[0].user_id;
+        }
         setSelectedPlayer(firstId);
         const firstKey = `${firstId}_1`;
         const baseHoles = tRes.data.par_per_hole.map((par, i) => ({ hole: i + 1, par, strokes: 0 }));
@@ -294,8 +313,15 @@ export default function LiveScorer() {
         </Button>
       </div>
 
-      {/* Player Selector — non-admins only see their own tab */}
-      {(() => { const visibleRoster = isAdmin ? roster : roster.filter(r => r.user_id === user?.user_id); return (
+      {/* Player Selector — non-admins see their own tab (or their target in Random Scorer) */}
+      {(() => {
+        const isRandomScorer = tournament?.team_format === 'random_scorer';
+        const visibleRoster = isAdmin
+          ? roster
+          : isRandomScorer && randomScorerTarget
+            ? roster.filter(r => r.user_id === randomScorerTarget)
+            : roster.filter(r => r.user_id === user?.user_id);
+        return (
       roster.length === 0 ? (
         <Card className="border-[#E2E3DD] shadow-none">
           <CardContent className="py-12 text-center">

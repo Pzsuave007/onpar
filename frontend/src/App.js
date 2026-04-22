@@ -19,6 +19,8 @@ import TourDetail from '@/pages/TourDetail';
 import TournamentSettings from '@/pages/TournamentSettings';
 import TournamentEdit from '@/pages/TournamentEdit';
 import TournamentTeams from '@/pages/TournamentTeams';
+import Bracket from '@/pages/Bracket';
+import ScorerAssignments from '@/pages/ScorerAssignments';
 import CourseSearch from '@/pages/CourseSearch';
 import '@/App.css';
 
@@ -59,6 +61,8 @@ function AppRouter() {
         <Route path="/keeper/:tournamentId" element={<ProtectedRoute><LiveScorer /></ProtectedRoute>} />
         <Route path="/tournament/:tournamentId/settings" element={<ProtectedRoute adminOnly><TournamentSettings /></ProtectedRoute>} />
         <Route path="/tournament/:tournamentId/teams" element={<ProtectedRoute adminOnly><TournamentTeams /></ProtectedRoute>} />
+        <Route path="/tournament/:tournamentId/bracket" element={<ProtectedRoute><Bracket /></ProtectedRoute>} />
+        <Route path="/tournament/:tournamentId/scorer-assignments" element={<ProtectedRoute><ScorerAssignments /></ProtectedRoute>} />
         <Route path="/tournament/:tournamentId/edit" element={<ProtectedRoute adminOnly><TournamentEdit /></ProtectedRoute>} />
         <Route path="/courses/search" element={<ProtectedRoute adminOnly><CourseSearch /></ProtectedRoute>} />
         <Route path="/challenges" element={<Challenges />} />

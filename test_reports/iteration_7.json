@@ -1,0 +1,39 @@
+{
+  "summary": "Tested Match Play (bracket) and Random Scorer (cross-scoring) backend endpoints + Frontend regressions. Backend: 10/10 pytest passed against localhost:8001. Frontend: /tournament/new/edit regression verified (no /api/tournaments/undefined calls; 'New Tournament' header renders; Match Play & Random Scorer options visible in format dropdown). Critical: production deployment at https://onparlive.com is STALE — new bracket & scorer-assignments backend endpoints AND new /tournament/:id/bracket and /tournament/:id/scorer-assignments frontend routes are NOT deployed there yet. Cannot run frontend E2E for new pages until production deploys the latest build.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Bracket / ScorerAssignments pages on production", "issue": "Production frontend at https://onparlive.com does NOT have the new routes /tournament/:id/bracket or /tournament/:id/scorer-assignments — both URLs redirect to landing page. Local frontend dev server (localhost:3000) is bound to REACT_APP_BACKEND_URL=https://onparlive.com (which also lacks the new backend endpoints, returns 404). Full E2E for new features blocked until production deploys the latest backend+frontend build.", "affected_selectors": ["[data-testid=bracket-page]", "[data-testid=scorer-assignments-page]"]}
+    ],
+    "design_issues": [
+      {"screen": "TournamentEdit form", "issues": ["Start Date / End Date inputs use the browser's native date picker (mm/dd/yyyy text-style). Per design guidelines should switch to shadcn Calendar component for consistent UX."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_match_play_random_scorer.py", "/app/test_reports/pytest/match_play_rs.xml"],
+  "action_items": [
+    "Deploy latest backend build to https://onparlive.com — new endpoints (POST /api/tournaments/{id}/bracket/generate, GET /api/tournaments/{id}/bracket, POST /api/tournaments/{id}/matches/{match_id}/score, POST /api/tournaments/{id}/scorer-assignments/shuffle, GET /api/tournaments/{id}/scorer-assignments, GET /api/tournaments/{id}/matches/mine) currently return 404 on production.",
+    "Deploy latest frontend build to https://onparlive.com — new routes /tournament/:id/bracket and /tournament/:id/scorer-assignments currently fall through to landing page (route not registered in deployed bundle).",
+    "(Optional UX) Replace native date inputs in TournamentEdit with shadcn Calendar component."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~1900+ lines — consider splitting into modules (auth, tournaments, scorecards, match_play, random_scorer, courses, leaderboard).",
+    "match_play winner tie-break in submit_match_score uses hardcoded 'player1 wins' as final fallback — acceptable but should be documented in admin UI.",
+    "_maybe_advance_bracket: if winners count is 1 (champion already crowned for this round), function correctly returns early. OK.",
+    "Random scorer derangement uses single-cycle shuffle — guarantees no self-scoring AND every player both scores and is scored. Algorithm correct.",
+    "keeper_submit_scorecard random_scorer enforcement correctly checks (scorer_user_id == caller AND target_user_id == data.user_id). Verified by test_keeper_enforces_assignment.",
+    "Bracket champion_id detection in get_bracket relies on 'last round has exactly 1 match completed'. Edge case: if final round contains a bye + real match, both must be completed before champion appears. Currently handled because _maybe_advance_bracket creates a Final round with the 2 winners. Verified end-to-end with 5 players.",
+    "MatchScoreSubmit pads p1/p2/pars to max length but does not enforce equal length up-front — silently accepts mismatched arrays. Consider adding validation: len(player1_holes)==len(player2_holes)==len(pars)==tournament.num_holes."
+  ],
+  "updated_files": ["/app/backend/tests/test_match_play_random_scorer.py"],
+  "success_rate": {"backend": "100% (10/10) against localhost", "frontend": "Regression checks PASS (/tournament/new/edit). New-feature pages NOT testable on production (deployment stale)."},
+  "test_credentials": "admin@fairway.com / FairwayAdmin123!  — works on production for login.",
+  "seed_data_creation": "Test creates and cleans up TEST_-prefixed tournaments + guest players via /api/tournaments/{id}/add-player. All test tournaments are deleted in finally blocks.",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/test_match_play_random_scorer.py — run with REACT_APP_BACKEND_URL=http://localhost:8001 because production at https://onparlive.com is currently STALE (missing new endpoints). After production redeploys, re-run the same suite against https://onparlive.com to confirm parity, and re-run the playwright frontend test for /tournament/:id/bracket and /tournament/:id/scorer-assignments pages (they did not render on production because routes are not yet deployed). Frontend .env points REACT_APP_BACKEND_URL to https://onparlive.com, so even the local dev server (port 3000) calls production for API.",
+  "rca of the issue": "Frontend pages did not render new bracket/scorer-assignments routes because https://onparlive.com is serving an OLDER build of the SPA where these routes are not registered in App.js — react-router falls through to the catch-all. Similarly, backend /api/tournaments/{id}/bracket/generate returns 404 on production because the deployed code lacks the new APIRouter entries (added in /app/backend/server.py lines ~799-1117). Local code is correct and fully tested."
+}

@@ -73,9 +73,19 @@ export default function TournamentEdit() {
         const res = await axios.post(`${API}/tournaments`, form);
         toast.success('Tournament created!');
         const newId = res.data.tournament_id;
-        if (form.team_format === 'best_ball' && newId) {
-          navigate(`/tournament/${newId}/teams`);
-          return;
+        if (newId) {
+          if (form.team_format === 'best_ball') {
+            navigate(`/tournament/${newId}/teams`);
+            return;
+          }
+          if (form.team_format === 'match_play') {
+            navigate(`/tournament/${newId}/bracket`);
+            return;
+          }
+          if (form.team_format === 'random_scorer') {
+            navigate(`/tournament/${newId}/scorer-assignments`);
+            return;
+          }
         }
       } else {
         await axios.put(`${API}/tournaments/${tournamentId}`, {
@@ -238,13 +248,17 @@ export default function TournamentEdit() {
             <SelectContent>
               <SelectItem value="individual">Individual (Stroke Play)</SelectItem>
               <SelectItem value="best_ball">Best Ball (Team)</SelectItem>
-              <SelectItem value="match_play" disabled>Match Play (coming soon)</SelectItem>
-              <SelectItem value="random_scorer" disabled>Random Scorer (coming soon)</SelectItem>
+              <SelectItem value="match_play">Match Play (Bracket)</SelectItem>
+              <SelectItem value="random_scorer">Random Scorer (Cross-Score)</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-[#6B6E66] mt-1">
             {form.team_format === 'best_ball'
               ? 'Team event — best shot of each team counts for every hole.'
+              : form.team_format === 'match_play'
+              ? 'Single-elimination bracket — 1v1 per round, hole-by-hole points (1 / 0.5 / 0).'
+              : form.team_format === 'random_scorer'
+              ? 'Cross-scoring — each player is randomly assigned another player to score. Stroke Play leaderboard.'
               : 'Each player tracks their own score.'}
           </p>
         </div>

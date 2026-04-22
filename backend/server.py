@@ -9,6 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from typing import List, Optional
 import uuid
+import random
 import bcrypt
 import jwt
 import httpx
@@ -90,6 +91,11 @@ class TournamentUpdate(BaseModel):
 class TeamCreate(BaseModel):
     name: str
     member_ids: List[str] = []
+
+class MatchScoreSubmit(BaseModel):
+    player1_holes: List[int]  # strokes per hole for player 1 (0 = not played)
+    player2_holes: List[int]  # strokes per hole for player 2
+    pars: List[int]           # par per hole (mirrors tournament par_per_hole)
 
 class HoleScore(BaseModel):
     hole: int
@@ -476,12 +482,20 @@ async def remove_player(tournament_id: str, user_id: str, request: Request):
 async def keeper_submit_scorecard(data: KeeperScoreSubmit, request: Request):
     user = await get_current_user(request)
     is_admin = user.get("role") == "admin"
-    # Non-admins can only submit their OWN scorecard
-    if not is_admin and data.user_id != user["user_id"]:
-        raise HTTPException(status_code=403, detail="You can only enter your own score")
     tournament = await db.tournaments.find_one({"tournament_id": data.tournament_id}, {"_id": 0})
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
+    # Random Scorer: the submitter must be the assigned scorer for this target
+    if not is_admin and tournament.get("team_format") == "random_scorer":
+        assignments = tournament.get("score_assignments", [])
+        pair = next((a for a in assignments
+                     if a["scorer_user_id"] == user["user_id"] and a["target_user_id"] == data.user_id), None)
+        if not pair:
+            raise HTTPException(status_code=403, detail="You are not the assigned scorer for this player")
+    else:
+        # Non-admins can only submit their OWN scorecard
+        if not is_admin and data.user_id != user["user_id"]:
+            raise HTTPException(status_code=403, detail="You can only enter your own score")
     reg = await db.registrations.find_one(
         {"tournament_id": data.tournament_id, "user_id": data.user_id}
     )
@@ -744,6 +758,363 @@ async def auto_form_teams(tournament_id: str, request: Request):
         await db.tournament_teams.insert_one(doc)
         teams_created.append({"team_id": team_id, "name": doc["name"], "members": doc["members"]})
     return {"teams": teams_created, "count": len(teams_created)}
+
+
+# --- Match Play: Bracket & Matches ---
+def _seed_round_label(n_players_in_round: int) -> str:
+    """Return PGA-style label for a bracket round size."""
+    if n_players_in_round <= 2: return "Final"
+    if n_players_in_round <= 4: return "Semifinals"
+    if n_players_in_round <= 8: return "Quarterfinals"
+    if n_players_in_round <= 16: return "Round of 16"
+    if n_players_in_round <= 32: return "Round of 32"
+    return f"Round of {n_players_in_round}"
+
+
+async def _enrich_match(m: dict) -> dict:
+    """Add player names + avatars to a match document."""
+    ids = [uid for uid in (m.get("player1_id"), m.get("player2_id")) if uid]
+    if not ids:
+        return m
+    users = await db.users.find({"user_id": {"$in": ids}}, {"_id": 0, "user_id": 1, "name": 1}).to_list(10)
+    name_map = {u["user_id"]: u["name"] for u in users}
+    avatars = await _get_avatars_for(ids)
+    regs = await db.registrations.find(
+        {"tournament_id": m["tournament_id"], "user_id": {"$in": ids}},
+        {"_id": 0, "user_id": 1, "player_name": 1}
+    ).to_list(10)
+    reg_map = {r["user_id"]: r.get("player_name") for r in regs}
+    def detail(uid):
+        if not uid: return None
+        return {
+            "user_id": uid,
+            "name": reg_map.get(uid) or name_map.get(uid) or "Unknown",
+            "avatar_url": avatars.get(uid)
+        }
+    m["player1"] = detail(m.get("player1_id"))
+    m["player2"] = detail(m.get("player2_id"))
+    return m
+
+
+@api_router.post("/tournaments/{tournament_id}/bracket/generate")
+async def generate_bracket(tournament_id: str, request: Request):
+    """Shuffle registered players into a single-elimination bracket (round 1 only)."""
+    await get_admin_user(request)
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if tournament.get("team_format") != "match_play":
+        raise HTTPException(status_code=400, detail="Tournament is not Match Play")
+
+    regs = await db.registrations.find(
+        {"tournament_id": tournament_id}, {"_id": 0}
+    ).to_list(500)
+    if len(regs) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 registered players")
+
+    # Clear existing bracket for this tournament
+    await db.matches.delete_many({"tournament_id": tournament_id})
+
+    # Random shuffle
+    player_ids = [r["user_id"] for r in regs]
+    random.shuffle(player_ids)
+
+    # If odd number, pick a bye at random from the list
+    bye_user_id = None
+    if len(player_ids) % 2 == 1:
+        bye_user_id = player_ids.pop(0)
+
+    now = datetime.now(timezone.utc).isoformat()
+    bracket_round = 1
+    round_label = _seed_round_label(len(player_ids) + (1 if bye_user_id else 0))
+    matches_created = []
+    for idx in range(0, len(player_ids), 2):
+        match_id = f"match_{uuid.uuid4().hex[:12]}"
+        doc = {
+            "match_id": match_id,
+            "tournament_id": tournament_id,
+            "bracket_round": bracket_round,
+            "round_label": round_label,
+            "match_index": idx // 2,
+            "player1_id": player_ids[idx],
+            "player2_id": player_ids[idx + 1],
+            "winner_id": None,
+            "status": "pending",
+            "player1_holes": [],
+            "player2_holes": [],
+            "player1_points": 0.0,
+            "player2_points": 0.0,
+            "created_at": now
+        }
+        await db.matches.insert_one(doc)
+        matches_created.append(match_id)
+
+    # If there is a bye, create an auto-completed match that advances to round 2
+    if bye_user_id:
+        match_id = f"match_{uuid.uuid4().hex[:12]}"
+        doc = {
+            "match_id": match_id,
+            "tournament_id": tournament_id,
+            "bracket_round": bracket_round,
+            "round_label": round_label,
+            "match_index": len(player_ids) // 2,
+            "player1_id": bye_user_id,
+            "player2_id": None,
+            "winner_id": bye_user_id,
+            "status": "completed",
+            "is_bye": True,
+            "player1_holes": [],
+            "player2_holes": [],
+            "player1_points": 0.0,
+            "player2_points": 0.0,
+            "created_at": now,
+            "completed_at": now
+        }
+        await db.matches.insert_one(doc)
+        matches_created.append(match_id)
+
+    return {"bracket_round": bracket_round, "matches_created": len(matches_created), "bye_user_id": bye_user_id}
+
+
+@api_router.get("/tournaments/{tournament_id}/bracket")
+async def get_bracket(tournament_id: str):
+    """Return all matches for a tournament, grouped by bracket_round."""
+    matches = await db.matches.find(
+        {"tournament_id": tournament_id}, {"_id": 0}
+    ).sort([("bracket_round", 1), ("match_index", 1)]).to_list(500)
+    matches = [await _enrich_match(m) for m in matches]
+    rounds = {}
+    for m in matches:
+        rounds.setdefault(m["bracket_round"], []).append(m)
+    # Determine current tournament winner (if last round completed)
+    champion_id = None
+    if rounds:
+        last_round = max(rounds.keys())
+        finals = rounds[last_round]
+        if len(finals) == 1 and finals[0].get("status") == "completed":
+            champion_id = finals[0].get("winner_id")
+    return {
+        "rounds": [{"bracket_round": k, "matches": v, "round_label": v[0].get("round_label") if v else ""} for k, v in sorted(rounds.items())],
+        "champion_id": champion_id
+    }
+
+
+@api_router.post("/tournaments/{tournament_id}/matches/{match_id}/score")
+async def submit_match_score(tournament_id: str, match_id: str, data: MatchScoreSubmit, request: Request):
+    """Submit per-hole strokes for a Match Play match. Computes hole points automatically."""
+    user = await get_current_user(request)
+    is_admin = user.get("role") == "admin"
+    match = await db.matches.find_one({"match_id": match_id, "tournament_id": tournament_id}, {"_id": 0})
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    if match.get("status") == "completed":
+        raise HTTPException(status_code=400, detail="Match already completed")
+    # Only admin OR one of the two players can submit
+    if not is_admin and user["user_id"] not in (match.get("player1_id"), match.get("player2_id")):
+        raise HTTPException(status_code=403, detail="Only match players or admin can submit")
+
+    p1 = data.player1_holes or []
+    p2 = data.player2_holes or []
+    pars = data.pars or []
+    n = max(len(p1), len(p2), len(pars))
+    p1 += [0] * (n - len(p1))
+    p2 += [0] * (n - len(p2))
+    pars += [0] * (n - len(pars))
+
+    # Compute points: per hole, lower strokes wins 1 pt, tie = 0.5 / 0.5, skip if either is 0
+    p1_pts = 0.0
+    p2_pts = 0.0
+    completed_holes = 0
+    for s1, s2 in zip(p1, p2):
+        if s1 > 0 and s2 > 0:
+            completed_holes += 1
+            if s1 < s2: p1_pts += 1
+            elif s2 < s1: p2_pts += 1
+            else:
+                p1_pts += 0.5
+                p2_pts += 0.5
+
+    status = match["status"]
+    winner_id = match.get("winner_id")
+    completed_at = match.get("completed_at")
+    # Mark completed if all holes have both scores
+    if completed_holes >= len(pars) and len(pars) > 0:
+        status = "completed"
+        completed_at = datetime.now(timezone.utc).isoformat()
+        if p1_pts > p2_pts:
+            winner_id = match["player1_id"]
+        elif p2_pts > p1_pts:
+            winner_id = match["player2_id"]
+        else:
+            # Tie on total points → lower total strokes wins; still tie → coin flip (player1)
+            t1 = sum(s for s in p1 if s > 0)
+            t2 = sum(s for s in p2 if s > 0)
+            if t1 < t2: winner_id = match["player1_id"]
+            elif t2 < t1: winner_id = match["player2_id"]
+            else: winner_id = match["player1_id"]
+    elif completed_holes > 0:
+        status = "in_progress"
+
+    await db.matches.update_one(
+        {"match_id": match_id},
+        {"$set": {
+            "player1_holes": p1, "player2_holes": p2, "pars": pars,
+            "player1_points": p1_pts, "player2_points": p2_pts,
+            "status": status, "winner_id": winner_id,
+            "completed_at": completed_at,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+
+    # If round is complete, auto-create next round
+    if status == "completed":
+        await _maybe_advance_bracket(tournament_id, match["bracket_round"])
+
+    return await db.matches.find_one({"match_id": match_id}, {"_id": 0})
+
+
+async def _maybe_advance_bracket(tournament_id: str, current_round: int):
+    """If all matches in the given round are completed, create next round."""
+    round_matches = await db.matches.find(
+        {"tournament_id": tournament_id, "bracket_round": current_round}, {"_id": 0}
+    ).sort("match_index", 1).to_list(200)
+    if not round_matches or any(m["status"] != "completed" for m in round_matches):
+        return
+    # Already created next round?
+    next_round = current_round + 1
+    existing_next = await db.matches.count_documents(
+        {"tournament_id": tournament_id, "bracket_round": next_round}
+    )
+    if existing_next > 0:
+        return
+    # Build next round pairings: winners of match 0 vs match 1, 2 vs 3, etc.
+    winners = [m.get("winner_id") for m in round_matches if m.get("winner_id")]
+    if len(winners) < 2:
+        return  # tournament complete (champion)
+    now = datetime.now(timezone.utc).isoformat()
+    round_label = _seed_round_label(len(winners))
+    for idx in range(0, len(winners), 2):
+        if idx + 1 >= len(winners):
+            # Odd winners → bye
+            match_id = f"match_{uuid.uuid4().hex[:12]}"
+            await db.matches.insert_one({
+                "match_id": match_id, "tournament_id": tournament_id,
+                "bracket_round": next_round, "round_label": round_label,
+                "match_index": idx // 2,
+                "player1_id": winners[idx], "player2_id": None,
+                "winner_id": winners[idx], "status": "completed", "is_bye": True,
+                "player1_holes": [], "player2_holes": [],
+                "player1_points": 0.0, "player2_points": 0.0,
+                "created_at": now, "completed_at": now
+            })
+            continue
+        match_id = f"match_{uuid.uuid4().hex[:12]}"
+        await db.matches.insert_one({
+            "match_id": match_id, "tournament_id": tournament_id,
+            "bracket_round": next_round, "round_label": round_label,
+            "match_index": idx // 2,
+            "player1_id": winners[idx], "player2_id": winners[idx + 1],
+            "winner_id": None, "status": "pending",
+            "player1_holes": [], "player2_holes": [],
+            "player1_points": 0.0, "player2_points": 0.0,
+            "created_at": now
+        })
+
+
+@api_router.get("/tournaments/{tournament_id}/matches/mine")
+async def get_my_active_match(tournament_id: str, request: Request):
+    """Return the current user's active (non-completed) match in this tournament."""
+    user = await get_current_user(request)
+    m = await db.matches.find_one(
+        {
+            "tournament_id": tournament_id,
+            "status": {"$ne": "completed"},
+            "$or": [{"player1_id": user["user_id"]}, {"player2_id": user["user_id"]}]
+        },
+        {"_id": 0},
+        sort=[("bracket_round", -1)]
+    )
+    if not m:
+        return {"match": None}
+    return {"match": await _enrich_match(m)}
+
+
+# --- Random Scorer: Cross-Scoring Assignments ---
+@api_router.post("/tournaments/{tournament_id}/scorer-assignments/shuffle")
+async def shuffle_scorer_assignments(tournament_id: str, request: Request):
+    """Randomly pair every registered player with someone else to score (derangement).
+    Each player A is assigned a target B such that A != B. Every player both scores
+    one other and is scored by exactly one other (rotating cycle)."""
+    await get_admin_user(request)
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if tournament.get("team_format") != "random_scorer":
+        raise HTTPException(status_code=400, detail="Tournament is not Random Scorer")
+
+    regs = await db.registrations.find(
+        {"tournament_id": tournament_id}, {"_id": 0}
+    ).to_list(500)
+    ids = [r["user_id"] for r in regs]
+    if len(ids) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 registered players")
+
+    # Shuffle and pair in a cycle: A → B → C → ... → A
+    random.shuffle(ids)
+    assignments = []
+    for i, scorer in enumerate(ids):
+        target = ids[(i + 1) % len(ids)]
+        assignments.append({"scorer_user_id": scorer, "target_user_id": target})
+
+    await db.tournaments.update_one(
+        {"tournament_id": tournament_id},
+        {"$set": {
+            "score_assignments": assignments,
+            "score_assignments_updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    return {"assignments": assignments, "count": len(assignments)}
+
+
+@api_router.get("/tournaments/{tournament_id}/scorer-assignments")
+async def get_scorer_assignments(tournament_id: str, request: Request):
+    """Return the cross-scoring assignments with player names/avatars."""
+    tournament = await db.tournaments.find_one({"tournament_id": tournament_id}, {"_id": 0})
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    assignments = tournament.get("score_assignments", [])
+    if not assignments:
+        return {"assignments": [], "my_target": None}
+    all_ids = list({a["scorer_user_id"] for a in assignments} | {a["target_user_id"] for a in assignments})
+    users = await db.users.find({"user_id": {"$in": all_ids}}, {"_id": 0, "user_id": 1, "name": 1}).to_list(500)
+    name_map = {u["user_id"]: u["name"] for u in users}
+    regs = await db.registrations.find(
+        {"tournament_id": tournament_id, "user_id": {"$in": all_ids}},
+        {"_id": 0, "user_id": 1, "player_name": 1}
+    ).to_list(500)
+    reg_map = {r["user_id"]: r.get("player_name") for r in regs}
+    avatars = await _get_avatars_for(all_ids)
+
+    def detail(uid):
+        return {
+            "user_id": uid,
+            "name": reg_map.get(uid) or name_map.get(uid) or "Unknown",
+            "avatar_url": avatars.get(uid)
+        }
+
+    enriched = [
+        {"scorer": detail(a["scorer_user_id"]), "target": detail(a["target_user_id"])}
+        for a in assignments
+    ]
+    # Figure out "my_target" for the caller
+    user = await get_optional_user(request)
+    my_target = None
+    if user:
+        for a in assignments:
+            if a["scorer_user_id"] == user["user_id"]:
+                my_target = detail(a["target_user_id"])
+                break
+    return {"assignments": enriched, "my_target": my_target}
 
 
 @api_router.get("/leaderboard/{tournament_id}")
