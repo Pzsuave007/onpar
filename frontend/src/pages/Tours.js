@@ -262,7 +262,7 @@ export default function Tournaments() {
               </div>
               <div className="flex-1">
                 <p className="font-bold text-[#1B3C35]">Local Tournament</p>
-                <p className="text-xs text-[#6B6E66] mt-0.5">Everyone plays the same course on the same day. You keep everyone's live scores.</p>
+                <p className="text-xs text-[#6B6E66] mt-0.5">Everyone plays the same course on the same day. Each player tracks their own score.</p>
               </div>
             </button>
             <button
