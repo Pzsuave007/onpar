@@ -429,7 +429,7 @@ export default function ChallengeDetail() {
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <span className="text-sm font-bold text-[#1B3C35] w-5 tabular-nums shrink-0">{i + 1}</span>
-                    <PlayerAvatar name={p.player_name} url={p.avatar_url} size="sm" />
+                    <PlayerAvatar name={p.player_name} url={p.avatar_url} size="md" />
                     <span className="font-medium text-[#1B3C35] truncate">{p.player_name}</span>
                     {p.user_id === challenge.winner_id && <Trophy className="h-4 w-4 text-amber-500 shrink-0" />}
                   </div>
@@ -477,7 +477,7 @@ export default function ChallengeDetail() {
                   <div key={p.user_id} className="py-2.5 border-b border-[#E2E3DD] last:border-0">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <PlayerAvatar name={p.player_name} url={p.avatar_url} size="xs" />
+                        <PlayerAvatar name={p.player_name} url={p.avatar_url} size="md" />
                         <span className="text-sm font-medium text-[#1B3C35] truncate">{p.player_name}</span>
                       </div>
                       <span className="text-xs font-bold text-[#C96A52] tabular-nums shrink-0 ml-2">{birdieCount}/{course.holes?.length}</span>

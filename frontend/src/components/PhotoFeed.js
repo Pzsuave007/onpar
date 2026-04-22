@@ -44,7 +44,7 @@ function FeedPhoto({ photo }) {
   return (
     <div className="bg-white rounded-xl border border-[#E2E3DD] overflow-hidden" data-testid={`feed-photo-${photo.photo_id}`}>
       <div className="flex items-center gap-2.5 p-3">
-        <PlayerAvatar name={photo.player_name} url={photo.avatar_url || photo.picture} size="sm" />
+        <PlayerAvatar name={photo.player_name} url={photo.avatar_url || photo.picture} size="md" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-[#1B3C35] truncate">{photo.player_name}</p>
           <p className="text-[10px] text-[#6B6E66]">{timeAgo(photo.created_at)}</p>

@@ -309,7 +309,7 @@ export default function LiveScorer() {
                 className={`shrink-0 pl-1.5 pr-3 ${r.user_id === selectedPlayer ? 'bg-[#1B3C35] hover:bg-[#1B3C35]/90' : 'border-[#E2E3DD] text-[#1B3C35]'}`}
                 data-testid={`player-tab-${r.user_id}`}
               >
-                <PlayerAvatar name={r.player_name} url={r.avatar_url} size="xs" className="mr-1.5" />
+                <PlayerAvatar name={r.player_name} url={r.avatar_url} size="md" className="mr-1.5" />
                 {r.player_name}
               </Button>
             ))}
@@ -494,7 +494,7 @@ export default function LiveScorer() {
                     data-testid={`standing-${i}`}>
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className="text-sm font-bold text-[#1B3C35] w-5 tabular-nums shrink-0">{i + 1}</span>
-                      <PlayerAvatar name={s.player_name} url={s.avatar_url} size="xs" />
+                      <PlayerAvatar name={s.player_name} url={s.avatar_url} size="md" />
                       <span className="text-sm font-medium text-[#1B3C35] truncate">{s.player_name}</span>
                     </div>
                     <div className="flex items-center gap-4">
