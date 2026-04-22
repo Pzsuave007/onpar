@@ -148,6 +148,7 @@ export default function PublicLeaderboard() {
 
   const tournament = leaderboardData?.tournament;
   const leaderboard = leaderboardData?.leaderboard || [];
+  const isParticipant = !!(user && leaderboard.some(p => p.user_id === user.user_id));
   const isStableford = tournament?.scoring_format === 'stableford';
 
   return (
@@ -218,13 +219,21 @@ export default function PublicLeaderboard() {
                 <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5 shrink-0" />{leaderboard.length} players</span>
                 {(tournament.num_rounds || 1) > 1 && <span>{tournament.num_rounds} rounds</span>}
               </div>
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-2 mt-3 flex-wrap">
                 <Badge variant="outline" className="capitalize">{tournament.scoring_format}</Badge>
                 <Badge className={tournament.status === 'active'
                   ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100'
                   : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100'}>
                   {tournament.status}
                 </Badge>
+                {(isParticipant || user?.role === 'admin') && tournament.status !== 'completed' && (
+                  <Link to={`/keeper/${selectedId}`} data-testid="enter-my-score-btn">
+                    <Badge className="bg-[#C96A52] text-white hover:bg-[#C96A52]/90 cursor-pointer">
+                      <Camera className="h-3 w-3 mr-1" />
+                      {user?.role === 'admin' ? 'Enter scores' : 'Enter my score'}
+                    </Badge>
+                  </Link>
+                )}
               </div>
             </CardContent>
           </Card>

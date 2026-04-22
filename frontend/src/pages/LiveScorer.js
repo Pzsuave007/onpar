@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { API } from '@/contexts/AuthContext';
+import { useAuth, API } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,8 @@ function scoreClr(s) { return s < 0 ? 'text-[#C96A52]' : s > 0 ? 'text-[#1D2D44]
 export default function LiveScorer() {
   const { tournamentId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [tournament, setTournament] = useState(null);
   const [roster, setRoster] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -64,7 +66,9 @@ export default function LiveScorer() {
       setAllPlayerScores(scMap);
 
       if (rosterRes.data.length > 0 && !selectedPlayer) {
-        const firstId = rosterRes.data[0].user_id;
+        // Non-admins default to their own row
+        const myRow = rosterRes.data.find(r => r.user_id === user?.user_id);
+        const firstId = !isAdmin && myRow ? myRow.user_id : rosterRes.data[0].user_id;
         setSelectedPlayer(firstId);
         const firstKey = `${firstId}_1`;
         const baseHoles = tRes.data.par_per_hole.map((par, i) => ({ hole: i + 1, par, strokes: 0 }));
@@ -260,21 +264,27 @@ export default function LiveScorer() {
       {/* Tournament Header */}
       <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
         <div>
-          <p className="text-xs tracking-[0.2em] uppercase font-bold text-[#C96A52]">Live Scorer</p>
+          <p className="text-xs tracking-[0.2em] uppercase font-bold text-[#C96A52]">
+            {isAdmin ? 'Live Scorer' : 'My Score'}
+          </p>
           <h1 className="text-xl sm:text-2xl font-bold text-[#1B3C35] tracking-tight" style={{ fontFamily: 'Outfit' }}>
             {tournament.name}
           </h1>
           <p className="text-sm text-[#6B6E66]">{tournament.course_name}</p>
         </div>
-        <Button size="sm" className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => setShowAddPlayer(true)}
-          data-testid="add-player-btn">
-          <UserPlus className="h-4 w-4 mr-1" />Add Player
-        </Button>
-        <Link to={`/tournament/${tournamentId}/settings`}>
-          <Button size="sm" variant="outline" className="border-[#E2E3DD] text-[#1B3C35]" data-testid="manage-players-btn">
-            <Users className="h-4 w-4 mr-1" />Manage
-          </Button>
-        </Link>
+        {isAdmin && (
+          <>
+            <Button size="sm" className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => setShowAddPlayer(true)}
+              data-testid="add-player-btn">
+              <UserPlus className="h-4 w-4 mr-1" />Add Player
+            </Button>
+            <Link to={`/tournament/${tournamentId}/settings`}>
+              <Button size="sm" variant="outline" className="border-[#E2E3DD] text-[#1B3C35]" data-testid="manage-players-btn">
+                <Users className="h-4 w-4 mr-1" />Manage
+              </Button>
+            </Link>
+          </>
+        )}
         <Button size="sm" variant="outline" className="border-[#1B3C35] text-[#1B3C35]"
           onClick={() => {
             const url = `${window.location.origin}/leaderboard/${tournamentId}`;
@@ -284,36 +294,50 @@ export default function LiveScorer() {
         </Button>
       </div>
 
-      {/* Player Selector */}
-      {roster.length === 0 ? (
+      {/* Player Selector — non-admins only see their own tab */}
+      {(() => { const visibleRoster = isAdmin ? roster : roster.filter(r => r.user_id === user?.user_id); return (
+      roster.length === 0 ? (
         <Card className="border-[#E2E3DD] shadow-none">
           <CardContent className="py-12 text-center">
             <UserPlus className="h-10 w-10 text-[#D6D7D2] mx-auto mb-3" />
-            <p className="text-[#6B6E66] mb-4">Add the players to get started</p>
-            <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => setShowAddPlayer(true)}
-              data-testid="add-first-player-btn">
-              <UserPlus className="h-4 w-4 mr-1" />Add First Player
-            </Button>
+            <p className="text-[#6B6E66] mb-4">
+              {isAdmin ? 'Add the players to get started' : 'No players registered yet'}
+            </p>
+            {isAdmin && (
+              <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" onClick={() => setShowAddPlayer(true)}
+                data-testid="add-first-player-btn">
+                <UserPlus className="h-4 w-4 mr-1" />Add First Player
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : visibleRoster.length === 0 ? (
+        <Card className="border-[#E2E3DD] shadow-none">
+          <CardContent className="py-12 text-center">
+            <UserPlus className="h-10 w-10 text-[#D6D7D2] mx-auto mb-3" />
+            <p className="text-[#6B6E66]">You are not registered in this tournament. Ask the organizer for an invite.</p>
           </CardContent>
         </Card>
       ) : (
         <>
-          {/* Player Tabs */}
-          <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
-            {roster.map(r => (
-              <Button
-                key={r.user_id}
-                variant={r.user_id === selectedPlayer ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => switchPlayer(r.user_id)}
-                className={`shrink-0 pl-1.5 pr-3 ${r.user_id === selectedPlayer ? 'bg-[#1B3C35] hover:bg-[#1B3C35]/90' : 'border-[#E2E3DD] text-[#1B3C35]'}`}
-                data-testid={`player-tab-${r.user_id}`}
-              >
-                <PlayerAvatar name={r.player_name} url={r.avatar_url} size="md" className="mr-1.5" />
-                {r.player_name}
-              </Button>
-            ))}
-          </div>
+          {/* Player Tabs (only admin sees more than one) */}
+          {isAdmin && visibleRoster.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+              {visibleRoster.map(r => (
+                <Button
+                  key={r.user_id}
+                  variant={r.user_id === selectedPlayer ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => switchPlayer(r.user_id)}
+                  className={`shrink-0 pl-1.5 pr-3 ${r.user_id === selectedPlayer ? 'bg-[#1B3C35] hover:bg-[#1B3C35]/90' : 'border-[#E2E3DD] text-[#1B3C35]'}`}
+                  data-testid={`player-tab-${r.user_id}`}
+                >
+                  <PlayerAvatar name={r.player_name} url={r.avatar_url} size="md" className="mr-1.5" />
+                  {r.player_name}
+                </Button>
+              ))}
+            </div>
+          )}
 
           {/* Round Tabs */}
           {numRounds > 1 && (
@@ -509,7 +533,8 @@ export default function LiveScorer() {
             </Card>
           )}
         </>
-      )}
+      )
+      ); })()}
 
       {/* Add Player Dialog */}
       <Dialog open={showAddPlayer} onOpenChange={setShowAddPlayer}>

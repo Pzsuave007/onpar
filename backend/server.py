@@ -466,7 +466,11 @@ async def remove_player(tournament_id: str, user_id: str, request: Request):
 
 @api_router.post("/scorecards/keeper")
 async def keeper_submit_scorecard(data: KeeperScoreSubmit, request: Request):
-    await get_admin_user(request)
+    user = await get_current_user(request)
+    is_admin = user.get("role") == "admin"
+    # Non-admins can only submit their OWN scorecard
+    if not is_admin and data.user_id != user["user_id"]:
+        raise HTTPException(status_code=403, detail="You can only enter your own score")
     tournament = await db.tournaments.find_one({"tournament_id": data.tournament_id}, {"_id": 0})
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
@@ -475,6 +479,13 @@ async def keeper_submit_scorecard(data: KeeperScoreSubmit, request: Request):
     )
     if not reg:
         raise HTTPException(status_code=403, detail="Player not registered for this tournament")
+    # Additionally require that the submitter themselves is registered (unless admin)
+    if not is_admin:
+        submitter_reg = await db.registrations.find_one(
+            {"tournament_id": data.tournament_id, "user_id": user["user_id"]}
+        )
+        if not submitter_reg:
+            raise HTTPException(status_code=403, detail="You must be registered for this tournament")
     max_rounds = tournament.get("num_rounds", 1)
     if data.round_number < 1 or data.round_number > max_rounds:
         raise HTTPException(status_code=400, detail="Invalid round number")

@@ -55,7 +55,7 @@ function AppRouter() {
         <Route path="/dashboard" element={<ProtectedRoute><PlayerDashboard /></ProtectedRoute>} />
         <Route path="/scorecard/:tournamentId" element={<ProtectedRoute><ScorecardEntry /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
-        <Route path="/keeper/:tournamentId" element={<ProtectedRoute adminOnly><LiveScorer /></ProtectedRoute>} />
+        <Route path="/keeper/:tournamentId" element={<ProtectedRoute><LiveScorer /></ProtectedRoute>} />
         <Route path="/tournament/:tournamentId/settings" element={<ProtectedRoute adminOnly><TournamentSettings /></ProtectedRoute>} />
         <Route path="/tournament/:tournamentId/edit" element={<ProtectedRoute adminOnly><TournamentEdit /></ProtectedRoute>} />
         <Route path="/tournament/new/edit" element={<ProtectedRoute adminOnly><TournamentEdit /></ProtectedRoute>} />
