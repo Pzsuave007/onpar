@@ -11,13 +11,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { Camera, Send, Loader2, X, Trophy, Target } from 'lucide-react';
 
-export default function PhotoShareSheet({ open, onOpenChange, defaultTargets, courseId = null }) {
+export default function PhotoShareSheet({ open, onOpenChange, defaultTargets, courseId = null, defaultCaption = '' }) {
   const [targets, setTargets] = useState([]);
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [selected, setSelected] = useState(() => new Set(defaultTargets || []));
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [caption, setCaption] = useState('');
+  const [caption, setCaption] = useState(defaultCaption);
+
+  useEffect(() => {
+    if (open) setCaption(defaultCaption);
+  }, [open, defaultCaption]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 

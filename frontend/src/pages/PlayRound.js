@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import { ArrowLeft, Save, Flag, MapPin, Target, ChevronLeft, ChevronRight, LayoutGrid, Camera } from 'lucide-react';
 import PhotoShareSheet from '@/components/PhotoShareSheet';
+import DistanceToGreen from '@/components/DistanceToGreen';
 
 const TEE_COLORS = {
   black: 'bg-gray-900 text-white',
@@ -55,7 +56,10 @@ export default function PlayRound() {
   // Must be declared at the top level (before any early returns) to keep hook order stable.
   useEffect(() => {
     if (selectedCourse && !selectedTee && !holes.length && (!selectedCourse.tees || selectedCourse.tees.length === 0) && selectedCourse.holes?.length) {
-      const fallbackHoles = selectedCourse.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, toPar: '', yardage: h.yardage || 0 }));
+      const fallbackHoles = selectedCourse.holes.map(h => ({
+        hole: h.hole, par: h.par, strokes: 0, toPar: '', yardage: h.yardage || 0,
+        green_lat: h.green_lat, green_lng: h.green_lng
+      }));
       setHoles(fallbackHoles);
       setSelectedTee({ name: 'Default', color: 'white', holes: selectedCourse.holes });
     }
@@ -63,7 +67,10 @@ export default function PlayRound() {
 
   const selectTee = (tee) => {
     setSelectedTee(tee);
-    setHoles(tee.holes.map(h => ({ hole: h.hole, par: h.par, strokes: 0, toPar: '', yardage: h.yardage || 0 })));
+    setHoles(tee.holes.map(h => ({
+      hole: h.hole, par: h.par, strokes: 0, toPar: '', yardage: h.yardage || 0,
+      green_lat: h.green_lat, green_lng: h.green_lng
+    })));
     setRoundId(null);
     setBirdieAlerts([]);
     setCurrentHoleIndex(0);
@@ -71,13 +78,47 @@ export default function PlayRound() {
 
   // Directly set strokes for a hole (used by the +/- stepper).
   const setHoleStrokes = (index, strokes) => {
+    let newHoles;
     setHoles(prev => {
       const updated = [...prev];
       const h = updated[index];
       const clamped = Math.max(0, Math.min(15, strokes));
       updated[index] = { ...h, strokes: clamped, toPar: clamped === 0 ? '' : clamped - h.par };
+      newHoles = updated;
       return updated;
     });
+    // Fire insights after the state updates
+    if (strokes > 0 && newHoles) {
+      const h = newHoles[index];
+      fetchAndShowInsights(h, newHoles);
+    }
+  };
+
+  const fetchAndShowInsights = async (hole, allHoles) => {
+    try {
+      const res = await axios.post(`${API}/insights/hole`, {
+        course_id: selectedCourse?.course_id,
+        course_name: selectedCourse?.course_name,
+        hole_num: hole.hole, par: hole.par, strokes: hole.strokes,
+        round_holes: allHoles.map(h => ({ hole: h.hole, par: h.par, strokes: h.strokes }))
+      });
+      const items = res.data?.insights || [];
+      items.forEach((ins, i) => {
+        setTimeout(() => {
+          toast(`${ins.icon} ${ins.title}`, { description: ins.message, duration: 4000 });
+        }, i * 600);
+      });
+    } catch {}
+  };
+
+  const openBragForCurrentHole = () => {
+    setShowPhotoShare(true);
+  };
+
+  const handleGreenPinned = ({ hole_num, lat, lng }) => {
+    setHoles(prev => prev.map(h =>
+      h.hole === hole_num ? { ...h, green_lat: lat, green_lng: lng } : h
+    ));
   };
 
   // Relative-to-par entry: user types -1 for birdie, 0 for par, +1 for bogey.
@@ -383,6 +424,21 @@ export default function PlayRound() {
             <p className="text-center text-[11px] text-[#6B6E66] mt-3">
               {currentHole.strokes > 0 ? `${currentHole.strokes} strokes` : 'Tap + for par · − for birdie'}
             </p>
+            {/* GPS distance to green (crowd-sourced) */}
+            <div className="mt-3">
+              <DistanceToGreen
+                courseId={selectedCourse?.course_id}
+                hole={currentHole}
+                onPinned={handleGreenPinned} />
+            </div>
+            {/* Quick brag button */}
+            <button
+              onClick={openBragForCurrentHole}
+              className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-[#E2E3DD] hover:bg-[#E8E9E3] text-[#1B3C35] transition-colors"
+              data-testid={`brag-hole-${currentHole.hole}`}>
+              <Camera className="h-4 w-4 text-[#C96A52]" />
+              <span className="text-xs font-bold">Subir foto del hoyo</span>
+            </button>
           </CardContent>
         </Card>
       )}
@@ -432,6 +488,9 @@ export default function PlayRound() {
         open={showPhotoShare}
         onOpenChange={setShowPhotoShare}
         courseId={selectedCourse?.course_id}
+        defaultCaption={currentHole
+          ? `Hoyo ${currentHole.hole} · Par ${currentHole.par}${currentHole.strokes > 0 ? ` · ${currentHole.strokes} strokes (${currentHole.strokes === currentHole.par ? 'par' : currentHole.strokes > currentHole.par ? '+' + (currentHole.strokes - currentHole.par) : (currentHole.strokes - currentHole.par)})` : ''}${selectedCourse?.course_name ? ` · ${selectedCourse.course_name}` : ''}`
+          : ''}
       />
 
       {/* Full scorecard modal (read-only grid view) */}

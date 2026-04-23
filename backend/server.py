@@ -2208,7 +2208,7 @@ async def get_tour_by_invite(invite_code: str):
     return tour
 
 
-# --- In-app notifications ---
+@api_router.get("/users/search")
 async def _create_notification(user_id: str, notif_type: str, title: str, message: str, link: str = None, meta: dict = None):
     """Helper to insert a notification doc."""
     doc = {
@@ -2250,6 +2250,120 @@ async def mark_all_notifications_read(request: Request):
         {"$set": {"read": True, "read_at": datetime.now(timezone.utc).isoformat()}}
     )
     return {"ok": True}
+
+
+# --- Live Stats / Hole Insights (dopamine hits) ---
+@api_router.post("/insights/hole")
+async def compute_hole_insights(request: Request):
+    """Given the player's current hole result, return 0-3 fun insights
+    comparing it to their history on this course / overall."""
+    user = await get_current_user(request)
+    body = await request.json()
+    course_id = body.get("course_id") or None
+    course_name = body.get("course_name") or ""
+    hole_num = int(body.get("hole_num", 0))
+    par = int(body.get("par", 0))
+    strokes = int(body.get("strokes", 0))
+    current_holes = body.get("round_holes", []) or []  # list of {hole, par, strokes} in current round
+
+    insights = []
+    to_par = strokes - par if par and strokes else 0
+
+    # 1. Eagle/Birdie/Ace recognition
+    if strokes == 1:
+        insights.append({"type": "ace", "icon": "🎯", "title": "HOLE IN ONE!", "message": "¡Increíble! Esto va a los libros."})
+    elif to_par <= -2:
+        insights.append({"type": "eagle", "icon": "🦅", "title": "¡Eagle!", "message": f"-{abs(to_par)} en el hoyo {hole_num}. Bestial."})
+    elif to_par == -1:
+        # Check if it's their first birdie on this course
+        first_birdie_here = False
+        if course_name:
+            history = await db.rounds.find(
+                {"user_id": user["user_id"], "course_name": course_name, "status": "completed"},
+                {"_id": 0, "holes": 1}
+            ).to_list(200)
+            had_birdie = any(
+                (h.get("strokes", 0) > 0 and h.get("par", 0) > 0 and (h["strokes"] - h["par"]) <= -1)
+                for r in history for h in (r.get("holes") or [])
+            )
+            first_birdie_here = not had_birdie
+        if first_birdie_here:
+            insights.append({"type": "first_birdie_course", "icon": "🎉",
+                             "title": "¡Primer birdie aquí!", "message": f"Tu primer birdie en {course_name}. Épico."})
+        else:
+            insights.append({"type": "birdie", "icon": "🐦", "title": "¡Birdie!", "message": f"Par {par} conquistado."})
+
+    # 2. Par streak (3+ consecutive holes at or under par)
+    recent = [h for h in current_holes if h.get("strokes", 0) > 0 and h.get("par", 0) > 0]
+    trailing = recent[-3:] if len(recent) >= 3 else []
+    if len(trailing) == 3 and all((h["strokes"] - h["par"]) <= 0 for h in trailing):
+        insights.append({"type": "streak", "icon": "🔥",
+                         "title": "Racha de 3 pares o mejor", "message": "En fuego — sigue así."})
+
+    # 3. Beating personal average on this par-class
+    if par and strokes:
+        history = await db.rounds.find(
+            {"user_id": user["user_id"], "status": "completed"},
+            {"_id": 0, "holes": 1}
+        ).limit(30).to_list(30)
+        same_par_scores = [h["strokes"] for r in history for h in (r.get("holes") or [])
+                           if h.get("par") == par and h.get("strokes", 0) > 0]
+        if len(same_par_scores) >= 5:
+            avg = sum(same_par_scores) / len(same_par_scores)
+            diff = avg - strokes
+            if diff >= 0.8:
+                insights.append({"type": "vs_average", "icon": "📈",
+                                 "title": f"Mejor que tu promedio par-{par}",
+                                 "message": f"Sacas {round(diff, 1)} strokes menos que tu promedio ({round(avg, 1)})."})
+
+    # 4. Round progress milestone
+    done_count = len([h for h in current_holes if h.get("strokes", 0) > 0])
+    if done_count == 9:
+        front_total = sum((h.get("strokes", 0) - h.get("par", 0))
+                         for h in current_holes[:9] if h.get("strokes", 0) > 0)
+        insights.append({"type": "front_9", "icon": "🏁",
+                         "title": "Front 9 completado",
+                         "message": f"{'+' if front_total > 0 else ''}{front_total} al par. ¡A por el back 9!"})
+    elif done_count == 18:
+        total = sum((h.get("strokes", 0) - h.get("par", 0))
+                   for h in current_holes if h.get("strokes", 0) > 0)
+        insights.append({"type": "round_complete", "icon": "🏆",
+                         "title": "Ronda completa", "message": f"Final: {'+' if total > 0 else ''}{total} al par."})
+
+    return {"insights": insights[:3]}  # cap at 3 to avoid overload
+
+
+# --- GPS Green Pin (crowd-sourced yardage) ---
+@api_router.put("/courses/{course_id}/holes/{hole_num}/green-pin")
+async def pin_green(course_id: str, hole_num: int, request: Request):
+    """Pin the green's GPS coordinates for a specific hole (any authenticated user can contribute)."""
+    user = await get_current_user(request)
+    body = await request.json()
+    lat = float(body.get("lat"))
+    lng = float(body.get("lng"))
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise HTTPException(status_code=400, detail="Invalid coordinates")
+    course = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    # Update in tees[0].holes (primary) AND flat holes array for back-compat
+    now = datetime.now(timezone.utc).isoformat()
+    tees = course.get("tees", [])
+    flat_holes = course.get("holes", [])
+    for tee in tees:
+        for h in tee.get("holes", []):
+            if h.get("hole") == hole_num or h.get("number") == hole_num:
+                h["green_lat"] = lat; h["green_lng"] = lng
+                h["pinned_by"] = user["user_id"]; h["pinned_at"] = now
+    for h in flat_holes:
+        if h.get("hole") == hole_num or h.get("number") == hole_num:
+            h["green_lat"] = lat; h["green_lng"] = lng
+            h["pinned_by"] = user["user_id"]; h["pinned_at"] = now
+    await db.golf_courses.update_one(
+        {"course_id": course_id},
+        {"$set": {"tees": tees, "holes": flat_holes, "updated_at": now}}
+    )
+    return {"ok": True, "lat": lat, "lng": lng}
 
 
 @api_router.get("/users/search")
