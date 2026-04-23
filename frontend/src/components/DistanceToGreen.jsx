@@ -43,7 +43,7 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
     setPinning(true);
     try {
       await axios.put(`${API}/courses/${courseId}/holes/${hole.hole}/green-pin`,
-        { lat: pos.lat, lng: pos.lng });
+        { lat: pos.lat, lng: pos.lng, accuracy: pos.acc });
       toast.success('✓ Green pinneado — siguientes jugadores verán la distancia');
       onPinned && onPinned({ hole_num: hole.hole, lat: pos.lat, lng: pos.lng });
     } catch (e) {

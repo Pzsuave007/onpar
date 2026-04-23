@@ -2335,13 +2335,26 @@ async def compute_hole_insights(request: Request):
 # --- GPS Green Pin (crowd-sourced yardage) ---
 @api_router.put("/courses/{course_id}/holes/{hole_num}/green-pin")
 async def pin_green(course_id: str, hole_num: int, request: Request):
-    """Pin the green's GPS coordinates for a specific hole (any authenticated user can contribute)."""
+    """Pin the green's GPS coordinates for a specific hole (any authenticated user can contribute).
+    Rejects pins with poor GPS accuracy (>50m) to prevent garbage data from desktop browsers
+    that rely on IP geolocation. Admins bypass this check."""
     user = await get_current_user(request)
     body = await request.json()
     lat = float(body.get("lat"))
     lng = float(body.get("lng"))
+    accuracy = body.get("accuracy")  # meters, from navigator.geolocation
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):
         raise HTTPException(status_code=400, detail="Invalid coordinates")
+    is_admin = user.get("role") == "admin"
+    if not is_admin and accuracy is not None:
+        try:
+            if float(accuracy) > 50:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"GPS accuracy too low ({int(float(accuracy))}m). Stand on the green with a phone for a real pin."
+                )
+        except (TypeError, ValueError):
+            pass
     course = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -2363,6 +2376,37 @@ async def pin_green(course_id: str, hole_num: int, request: Request):
         {"$set": {"tees": tees, "holes": flat_holes, "updated_at": now}}
     )
     return {"ok": True, "lat": lat, "lng": lng}
+
+
+@api_router.delete("/courses/{course_id}/holes/{hole_num}/green-pin")
+async def unpin_green(course_id: str, hole_num: int, request: Request):
+    """Admin-only: remove a previously pinned green (e.g. pinned by mistake from a desktop)."""
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    course = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    now = datetime.now(timezone.utc).isoformat()
+    tees = course.get("tees", [])
+    flat_holes = course.get("holes", [])
+    cleared = 0
+    for tee in tees:
+        for h in tee.get("holes", []):
+            if (h.get("hole") == hole_num or h.get("number") == hole_num) and h.get("green_lat") is not None:
+                h.pop("green_lat", None); h.pop("green_lng", None)
+                h.pop("pinned_by", None); h.pop("pinned_at", None)
+                cleared += 1
+    for h in flat_holes:
+        if (h.get("hole") == hole_num or h.get("number") == hole_num) and h.get("green_lat") is not None:
+            h.pop("green_lat", None); h.pop("green_lng", None)
+            h.pop("pinned_by", None); h.pop("pinned_at", None)
+            cleared += 1
+    await db.golf_courses.update_one(
+        {"course_id": course_id},
+        {"$set": {"tees": tees, "holes": flat_holes, "updated_at": now}}
+    )
+    return {"ok": True, "cleared": cleared}
 
 
 @api_router.get("/users/search")
