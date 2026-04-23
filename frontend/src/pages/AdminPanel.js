@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio, Share2, Camera, MapPin, Loader2, Lock, Globe, Copy, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Play, CheckCircle, Users, Trophy, Radio, Share2, Camera, MapPin, Loader2, Lock, Globe, Copy, Search, Flag } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useRef } from 'react';
+import PinGreensTab from '@/components/PinGreensTab';
 
 const DEFAULT_PAR = [4, 3, 5, 4, 4, 3, 4, 5, 4, 4, 3, 5, 4, 4, 3, 4, 5, 4];
 const DEFAULT_PAR_9 = [4, 3, 5, 4, 4, 3, 4, 5, 4];
@@ -274,6 +275,9 @@ export default function AdminPanel() {
           <TabsTrigger value="courses" data-testid="admin-courses-tab">
             <MapPin className="h-4 w-4 mr-1" />Courses
           </TabsTrigger>
+          <TabsTrigger value="pin-greens" data-testid="admin-pin-greens-tab">
+            <Flag className="h-4 w-4 mr-1" />Pin Greens
+          </TabsTrigger>
           <TabsTrigger value="players" data-testid="admin-players-tab">
             <Users className="h-4 w-4 mr-1" />Players
           </TabsTrigger>
@@ -467,6 +471,10 @@ export default function AdminPanel() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="pin-greens">
+          <PinGreensTab />
         </TabsContent>
 
         <TabsContent value="players">
