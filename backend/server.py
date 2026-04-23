@@ -2208,7 +2208,6 @@ async def get_tour_by_invite(invite_code: str):
     return tour
 
 
-@api_router.get("/users/search")
 async def _create_notification(user_id: str, notif_type: str, title: str, message: str, link: str = None, meta: dict = None):
     """Helper to insert a notification doc."""
     doc = {

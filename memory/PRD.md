@@ -109,6 +109,12 @@ Solves the "10 players in 4 cities" pain: creator can pre-assign a course per pl
 - Files touched: `/app/backend/server.py` (+170 lines: tour_invites CRUD, public lookup, accept; relaxed POST /courses + /courses/search to any user); `/app/frontend/src/pages/TourDetail.js` (+invite panel, +Add Course dialog, +auto-accept on invite URL).
 - Verified via curl: create 2 invites (one with course pre-assigned, one without), list, public code lookup returns invite+tour meta, accept auto-joins with course applied; non-admin can POST /courses successfully. Build: `main.624e4f29.js`.
 
+### Phase 15 - Live Round Features + Deploy Unblock (Apr 23, 2026) ✅
+- Shipped: GPS distance-to-green (`DistanceToGreen.jsx`), live round Insights pop-ups (`/api/insights/hole`), Quick Brag photo upload from scorecard, `NotificationBell`, Round History page, Match Play bracket, Random Scorer.
+- **Bug fix (Feb 2026)**: Removed duplicate `@api_router.get("/users/search")` decorator that was wrongly attached to helper `_create_notification`, causing HTTP 422 on user search in production. Added regression test `tests/test_no_duplicate_routes.py` (2/2 pass).
+- Regenerated `frontend/yarn.lock` (was deleted, caused cPanel `git pull` conflict) and rebuilt `frontend/build/` (bundle `main.8e554d87.js`, 795 KB).
+- Deploy state: backend already updated on prod; frontend awaiting user `Save to Github` → `git pull` → `bash fix.sh`.
+
 ## Admin Credentials
 - Email: admin@fairway.com / Password: FairwayAdmin123!
 - Email: pzsuave007@gmail.com / Password: MXmedia007 (primary admin)
