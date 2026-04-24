@@ -57,6 +57,17 @@ Path map on the server:
 ### The `.gitignore` trap (this broke prod once)
 `frontend/.gitignore` USED TO have `/build` which meant "Save to Github" never pushed the compiled files. The owner ran `fix.sh` for days with no effect. This is fixed: **`/build` is commented out in `frontend/.gitignore`**. If you ever re-add it, deploys silently stop working. Do not re-add it.
 
+### The `frontend/build/` disappearance trap (this broke prod THREE times — Apr 24, 2026)
+After running `build_prod.sh`, the Emergent platform's auto-cleanup sometimes **deletes `/app/frontend/build/`** between your session steps (confirmed by auto-commits with `D frontend/build/static/js/main.*.js`). If the owner then runs `Save to Github`, the push goes out WITHOUT the bundle, they `git pull && bash fix.sh`, and the site goes blank — Apache falls back to returning `index.html` for the missing JS, the browser tries to parse HTML as JS, and the page renders empty with console error `Unexpected token '<'`.
+
+**MANDATORY after every `bash /app/build_prod.sh`:**
+1. Immediately run `cd /app && git add -f frontend/build/` to stage the build before any auto-cleanup can delete it.
+2. Verify with `git status -s | grep "A  frontend/build/static/js/main"` — you should see the new JS file staged.
+3. ONLY THEN tell the owner to click **"Save to Github"**. Do not chat further before he clicks it. The longer the gap between build and Save to Github, the higher the chance the build vanishes.
+4. Do NOT run another `build_prod.sh` or any other long task between the build and the "Save to Github" click.
+
+**The `fix.sh` on the server has a defense-in-depth guard (as of Apr 24, 2026):** it refuses to wipe `$WEB/static` unless the incoming build has BOTH an `index.html` AND at least one `.js` file under `static/js/`. If you ever simplify `fix.sh` again, keep that guard. Losing this guard is how prod went blank.
+
 ### `.env` workflow for testing
 If you need to test in the Emergent preview during development:
 1. Temporarily change `frontend/.env` to `REACT_APP_BACKEND_URL=https://onpar-live-golf.preview.emergentagent.com`
@@ -229,4 +240,4 @@ MongoDB responses **must exclude `_id`** (`{"_id": 0}` projection). ObjectId is 
 
 ---
 
-Last updated: 2026-04-22 by E1 fork agent (OnPar Live golf app).
+Last updated: 2026-04-24 by E1 fork agent (OnPar Live golf app). Added the `frontend/build/` disappearance trap + hardened `fix.sh` guard.
