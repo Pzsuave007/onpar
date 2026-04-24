@@ -378,16 +378,16 @@ export default function PlayRound() {
       {/* Current hole card (big stepper) */}
       {currentHole && (
         <Card className={`border-[#E2E3DD] shadow-none ${holeBg} transition-colors`}>
-          <CardContent className="py-7 px-4">
-            <div className="text-center mb-5">
+          <CardContent className="py-4 px-3">
+            <div className="text-center mb-2">
               <p className="text-[10px] text-[#6B6E66] uppercase font-bold tracking-widest">Hole</p>
-              <p className="text-5xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>{currentHole.hole}</p>
-              <p className="text-sm text-[#6B6E66] mt-1">
+              <p className="text-4xl font-bold text-[#1B3C35] leading-none" style={{ fontFamily: 'Outfit' }}>{currentHole.hole}</p>
+              <p className="text-xs text-[#6B6E66] mt-0.5">
                 Par {currentHole.par}{currentHole.yardage ? ` · ${currentHole.yardage}y` : ''}
               </p>
             </div>
             {scoreLabel && (
-              <p className={`text-center text-base font-bold mb-3 ${currentDiff < 0 ? 'text-[#C96A52]' : currentDiff === 0 ? 'text-[#4A5D23]' : 'text-[#1D2D44]'}`}>
+              <p className={`text-center text-sm font-bold mb-2 ${currentDiff < 0 ? 'text-[#C96A52]' : currentDiff === 0 ? 'text-[#4A5D23]' : 'text-[#1D2D44]'}`}>
                 {scoreLabel}
               </p>
             )}
@@ -397,11 +397,11 @@ export default function PlayRound() {
                   const next = currentHole.strokes === 0 ? Math.max(1, currentHole.par - 1) : Math.max(1, currentHole.strokes - 1);
                   setHoleStrokes(currentHoleIndex, next);
                 }}
-                className="w-16 h-16 rounded-full bg-[#1B3C35] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
+                className="w-14 h-14 rounded-full bg-[#1B3C35] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
                 data-testid={`play-minus-${currentHole.hole}`}>
                 −
               </button>
-              <span className="text-5xl font-bold text-[#1B3C35] w-20 text-center tabular-nums" style={{ fontFamily: 'Outfit' }}
+              <span className="text-5xl font-bold text-[#1B3C35] w-20 text-center tabular-nums leading-none" style={{ fontFamily: 'Outfit' }}
                 data-testid={`play-score-${currentHole.hole}`}>
                 {currentHole.strokes === 0
                   ? '–'
@@ -416,68 +416,62 @@ export default function PlayRound() {
                   const next = currentHole.strokes === 0 ? currentHole.par : Math.min(15, currentHole.strokes + 1);
                   setHoleStrokes(currentHoleIndex, next);
                 }}
-                className="w-16 h-16 rounded-full bg-[#C96A52] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
+                className="w-14 h-14 rounded-full bg-[#C96A52] text-white text-3xl font-bold flex items-center justify-center active:scale-90 transition-transform"
                 data-testid={`play-plus-${currentHole.hole}`}>
                 +
               </button>
             </div>
-            <p className="text-center text-[11px] text-[#6B6E66] mt-3">
-              {currentHole.strokes > 0 ? `${currentHole.strokes} strokes` : 'Tap + for par · − for birdie'}
-            </p>
-            {/* GPS distance to green (crowd-sourced) */}
-            <div className="mt-3">
+            {currentHole.strokes > 0 && (
+              <p className="text-center text-[11px] text-[#6B6E66] mt-1.5">
+                {currentHole.strokes} strokes
+              </p>
+            )}
+            {/* GPS distance to green + club suggestion */}
+            <div className="mt-2">
               <DistanceToGreen
                 courseId={selectedCourse?.course_id}
                 hole={currentHole}
                 onPinned={handleGreenPinned} />
             </div>
-            {/* Quick brag button */}
-            <button
-              onClick={openBragForCurrentHole}
-              className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-[#E2E3DD] hover:bg-[#E8E9E3] text-[#1B3C35] transition-colors"
-              data-testid={`brag-hole-${currentHole.hole}`}>
-              <Camera className="h-4 w-4 text-[#C96A52]" />
-              <span className="text-xs font-bold">Subir foto del hoyo</span>
-            </button>
           </CardContent>
         </Card>
       )}
 
       {/* Prev / Next nav */}
-      <div className="flex items-center justify-between mt-4">
-        <Button variant="outline" className="border-[#E2E3DD] h-12 px-4"
+      <div className="flex items-center justify-between mt-3">
+        <Button variant="outline" className="border-[#E2E3DD] h-11 px-3"
           disabled={currentHoleIndex === 0}
           onClick={() => setCurrentHoleIndex(currentHoleIndex - 1)}
           data-testid="play-prev-hole">
           <ChevronLeft className="h-5 w-5 mr-1" />Prev
         </Button>
-        <span className="text-sm text-[#6B6E66] tabular-nums">{currentHoleIndex + 1} / {holes.length}</span>
+        <span className="text-xs text-[#6B6E66] tabular-nums">{currentHoleIndex + 1} / {holes.length}</span>
         {currentHoleIndex < holes.length - 1 ? (
-          <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12 px-4"
+          <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-11 px-3"
             onClick={() => setCurrentHoleIndex(currentHoleIndex + 1)}
             data-testid="play-next-hole">
             Next<ChevronRight className="h-5 w-5 ml-1" />
           </Button>
         ) : (
-          <Button className="bg-[#C96A52] hover:bg-[#C96A52]/90 h-12 px-4" onClick={() => saveRound(true)}
+          <Button className="bg-[#C96A52] hover:bg-[#C96A52]/90 h-11 px-3" onClick={() => saveRound(true)}
             disabled={saving || !canFinish} data-testid="finish-round-btn">
             <Flag className="h-5 w-5 mr-1" />{saving ? 'Saving...' : (allFilled ? 'Finish' : front9Done ? 'Finish 9' : `${played.length}/${holes.length}`)}
           </Button>
         )}
       </div>
 
-      {/* Save progress + badges */}
-      <div className="flex items-center justify-between gap-2 mt-3">
-        <Button variant="outline" className="flex-1 border-[#E2E3DD] h-10"
+      {/* Save + Share Photo */}
+      <div className="flex items-center justify-between gap-2 mt-2">
+        <Button variant="outline" className="flex-1 border-[#E2E3DD] h-9"
           onClick={() => saveRound(false)} disabled={saving} data-testid="save-round-btn">
           <Save className="h-4 w-4 mr-1" />{saving ? 'Saving...' : 'Save'}
         </Button>
-        <Button variant="outline" className="flex-1 border-[#C96A52] text-[#C96A52] hover:bg-[#C96A52]/10 h-10"
-          onClick={() => setShowPhotoShare(true)} data-testid="play-share-photo-btn">
+        <Button variant="outline" className="flex-1 border-[#C96A52] text-[#C96A52] hover:bg-[#C96A52]/10 h-9"
+          onClick={openBragForCurrentHole} data-testid="play-share-photo-btn">
           <Camera className="h-4 w-4 mr-1" />Share Photo
         </Button>
         {birdieCount > 0 && (
-          <Badge className="bg-[#C96A52] text-white text-xs h-10 px-3 shrink-0">
+          <Badge className="bg-[#C96A52] text-white text-xs h-9 px-3 shrink-0">
             <Target className="h-3.5 w-3.5 mr-1" />{birdieCount}
           </Badge>
         )}

@@ -111,35 +111,35 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
       {suggestion && (
         <div className="py-2 px-3 rounded-lg bg-[#F4E9D8]/60 border border-[#C96A52]/20 text-center"
           data-testid={`club-suggestion-${hole.hole}`}>
-          <div className="text-[10px] text-[#6B6E66] uppercase tracking-wider font-bold mb-1 flex items-center justify-center gap-1">
+          <div className="text-xs text-[#6B6E66] uppercase tracking-wider font-bold mb-1 flex items-center justify-center gap-1">
             <span>🏌️</span> Suggested club
           </div>
           {suggestion.mode === 'single' && (
             <div className="flex items-baseline justify-center gap-2">
-              <span className="text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+              <span className="text-3xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
                 {suggestion.pick.name}
               </span>
-              <span className="text-sm text-[#6B6E66] tabular-nums">
-                ({suggestion.pick.distance_yards}y · comfortable)
+              <span className="text-base text-[#6B6E66] tabular-nums">
+                {suggestion.pick.distance_yards}y · comfortable
               </span>
             </div>
           )}
           {suggestion.mode === 'range' && (
-            <div className="flex items-stretch justify-center gap-2 text-center">
+            <div className="flex items-stretch justify-center gap-3 text-center">
               <div className="flex-1">
-                <div className="text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+                <div className="text-3xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
                   {suggestion.shorter.name}
                 </div>
-                <div className="text-[11px] text-[#6B6E66]">
+                <div className="text-sm text-[#6B6E66]">
                   {suggestion.shorter.distance_yards}y · w/ wind
                 </div>
               </div>
-              <div className="text-[#C96A52] self-center text-sm">or</div>
+              <div className="text-[#C96A52] self-center text-base font-bold">or</div>
               <div className="flex-1">
-                <div className="text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+                <div className="text-3xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
                   {suggestion.longer.name}
                 </div>
-                <div className="text-[11px] text-[#6B6E66]">
+                <div className="text-sm text-[#6B6E66]">
                   {suggestion.longer.distance_yards}y · into wind
                 </div>
               </div>
@@ -147,10 +147,10 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
           )}
           {suggestion.mode === 'forced' && (
             <div>
-              <span className="text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+              <span className="text-3xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
                 {suggestion.pick.name}
               </span>
-              <div className="text-[11px] text-[#6B6E66] mt-0.5">
+              <div className="text-sm text-[#6B6E66] mt-0.5">
                 Out of range · {suggestion.pick.distance_yards}y max
               </div>
             </div>
