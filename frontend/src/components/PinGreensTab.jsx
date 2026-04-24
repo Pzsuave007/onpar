@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { API } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -44,7 +45,11 @@ function getHoleList(course) {
   return course?.holes || [];
 }
 
+const OWNER_EMAIL = 'pzsuave007@gmail.com';
+
 export default function PinGreensTab() {
+  const { user } = useAuth();
+  const isOwner = (user?.email || '').toLowerCase() === OWNER_EMAIL;
   const [courses, setCourses] = useState([]);
   const [courseId, setCourseId] = useState('');
   const [inputs, setInputs] = useState({}); // {holeNum: "raw string"}
@@ -197,7 +202,7 @@ export default function PinGreensTab() {
                         data-testid={`pin-green-save-${n}`}>
                         {busy[n] ? '…' : 'Guardar'}
                       </Button>
-                      {pinned && (
+                      {pinned && isOwner && (
                         <Button
                           size="sm" variant="outline"
                           className="h-7 px-2 text-xs border-[#E2E3DD] text-[#C96A52] hover:bg-[#C96A52]/10"

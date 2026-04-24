@@ -2380,10 +2380,13 @@ async def pin_green(course_id: str, hole_num: int, request: Request):
 
 @api_router.delete("/courses/{course_id}/holes/{hole_num}/green-pin")
 async def unpin_green(course_id: str, hole_num: int, request: Request):
-    """Admin-only: remove a previously pinned green (e.g. pinned by mistake from a desktop)."""
+    """Owner-only: remove a previously pinned green (e.g. pinned by mistake from a desktop).
+    Restricted to the single email in OWNER_EMAIL env var — not any admin.
+    Falls back to pzsuave007@gmail.com if the env var is not set (production default)."""
     user = await get_current_user(request)
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    owner_email = (os.environ.get("OWNER_EMAIL") or "pzsuave007@gmail.com").strip().lower()
+    if (user.get("email") or "").lower() != owner_email:
+        raise HTTPException(status_code=403, detail="Owner only")
     course = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
