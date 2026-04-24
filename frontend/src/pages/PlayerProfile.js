@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { API } from '@/contexts/AuthContext';
+import { useAuth, API } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { User, Trophy, Target, ClipboardList, TrendingDown, BarChart3 } from 'lucide-react';
+import { User, Trophy, Target, ClipboardList, TrendingDown, BarChart3, Swords } from 'lucide-react';
 
 function formatToPar(score) {
   if (score === 0) return 'E';
@@ -20,7 +20,9 @@ function scoreColor(score) {
 
 export default function PlayerProfile() {
   const { userId } = useParams();
+  const { user: me } = useAuth();
   const [profile, setProfile] = useState(null);
+  const [h2h, setH2h] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,6 +32,14 @@ export default function PlayerProfile() {
       setProfile(null);
     }).finally(() => setLoading(false));
   }, [userId]);
+
+  // Fetch head-to-head only if the viewer is logged in and is NOT the profile owner
+  useEffect(() => {
+    if (!me || !userId || me.user_id === userId) return;
+    axios.get(`${API}/profile/head-to-head/${userId}`)
+      .then(res => setH2h(res.data))
+      .catch(() => setH2h(null));
+  }, [me, userId]);
 
   if (loading) {
     return (
@@ -99,6 +109,69 @@ export default function PlayerProfile() {
           </Card>
         ))}
       </div>
+
+      {/* Head-to-head (only shown when viewing someone else's profile) */}
+      {h2h && (h2h.stroke_wins + h2h.stroke_losses + h2h.stroke_ties + h2h.match_wins + h2h.match_losses) > 0 && (
+        <Card className="border-[#E2E3DD] shadow-none mb-6" data-testid="h2h-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-semibold text-[#1B3C35] flex items-center gap-2" style={{ fontFamily: 'Outfit' }}>
+              <Swords className="h-5 w-5 text-[#C96A52]" /> Head-to-Head · You vs {h2h.opponent?.name}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="text-center py-3 rounded-lg bg-[#4A5D23]/10 border border-[#4A5D23]/20">
+                <p className="text-3xl font-bold text-[#4A5D23] tabular-nums" style={{ fontFamily: 'Outfit' }}>
+                  {h2h.stroke_wins + h2h.match_wins}
+                </p>
+                <p className="text-[10px] uppercase tracking-wider text-[#6B6E66] font-bold mt-1">Wins</p>
+              </div>
+              <div className="text-center py-3 rounded-lg bg-[#C96A52]/10 border border-[#C96A52]/20">
+                <p className="text-3xl font-bold text-[#C96A52] tabular-nums" style={{ fontFamily: 'Outfit' }}>
+                  {h2h.stroke_losses + h2h.match_losses}
+                </p>
+                <p className="text-[10px] uppercase tracking-wider text-[#6B6E66] font-bold mt-1">Losses</p>
+              </div>
+              <div className="text-center py-3 rounded-lg bg-[#6B6E66]/10 border border-[#6B6E66]/20">
+                <p className="text-3xl font-bold text-[#6B6E66] tabular-nums" style={{ fontFamily: 'Outfit' }}>
+                  {h2h.stroke_ties}
+                </p>
+                <p className="text-[10px] uppercase tracking-wider text-[#6B6E66] font-bold mt-1">Ties</p>
+              </div>
+            </div>
+            {h2h.recent && h2h.recent.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-[#6B6E66] font-bold mb-2">Recent Matchups</p>
+                <div className="space-y-1.5">
+                  {h2h.recent.slice(0, 5).map((r, i) => (
+                    <div key={i} className="flex items-center justify-between py-1.5 px-3 bg-[#E8E9E3]/40 rounded text-sm"
+                      data-testid={`h2h-recent-${i}`}>
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium text-[#1B3C35] truncate">{r.tournament_name}</span>
+                        <span className="text-xs text-[#6B6E66] ml-2">
+                          {r.format === 'match' ? 'Match Play' : `R${r.round_number}`}
+                        </span>
+                      </div>
+                      {r.format === 'stroke' && (
+                        <span className="text-xs text-[#6B6E66] mx-3 tabular-nums hidden sm:inline">
+                          {r.my_strokes} vs {r.opp_strokes}
+                        </span>
+                      )}
+                      <Badge className={
+                        r.outcome === 'W' ? 'bg-[#4A5D23] hover:bg-[#4A5D23] text-white text-[10px]' :
+                        r.outcome === 'L' ? 'bg-[#C96A52] hover:bg-[#C96A52] text-white text-[10px]' :
+                        'bg-[#6B6E66] hover:bg-[#6B6E66] text-white text-[10px]'
+                      }>
+                        {r.outcome}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tournament History */}
       <Card className="border-[#E2E3DD] shadow-none">

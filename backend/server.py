@@ -3058,6 +3058,103 @@ async def get_my_photo_targets(request: Request):
         })
     return targets
 
+
+@api_router.get("/profile/head-to-head/{other_user_id}")
+async def head_to_head(other_user_id: str, request: Request):
+    """Return win/loss/tie summary between the authenticated user and `other_user_id`.
+
+    Counts each (tournament_id, round_number) where BOTH players have a submitted
+    scorecard — lower total_strokes wins (stroke play). Also rolls up match-play
+    results from the `matches` collection.
+    """
+    user = await get_current_user(request)
+    me = user["user_id"]
+    if other_user_id == me:
+        raise HTTPException(status_code=400, detail="Cannot compare with yourself")
+
+    other = await db.users.find_one({"user_id": other_user_id},
+                                    {"_id": 0, "user_id": 1, "name": 1, "picture": 1, "handicap": 1})
+    if not other:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    my_cards = await db.scorecards.find(
+        {"user_id": me, "status": "submitted"},
+        {"_id": 0, "tournament_id": 1, "round_number": 1, "total_strokes": 1, "total_to_par": 1}
+    ).to_list(1000)
+    if not my_cards:
+        return {"opponent": other, "stroke_wins": 0, "stroke_losses": 0,
+                "stroke_ties": 0, "match_wins": 0, "match_losses": 0, "recent": []}
+
+    opp_cards = await db.scorecards.find(
+        {"user_id": other_user_id, "status": "submitted",
+         "tournament_id": {"$in": list({c["tournament_id"] for c in my_cards})}},
+        {"_id": 0, "tournament_id": 1, "round_number": 1, "total_strokes": 1, "total_to_par": 1}
+    ).to_list(2000)
+    opp_by_key = {(c["tournament_id"], c["round_number"]): c for c in opp_cards}
+
+    wins = losses = ties = 0
+    recent = []
+    t_docs = await db.tournaments.find(
+        {"tournament_id": {"$in": list({c["tournament_id"] for c in my_cards})}},
+        {"_id": 0, "tournament_id": 1, "name": 1}
+    ).to_list(500)
+    t_name = {t["tournament_id"]: t["name"] for t in t_docs}
+
+    for c in my_cards:
+        key = (c["tournament_id"], c["round_number"])
+        opp = opp_by_key.get(key)
+        if not opp:
+            continue
+        if c["total_strokes"] < opp["total_strokes"]:
+            wins += 1; outcome = "W"
+        elif c["total_strokes"] > opp["total_strokes"]:
+            losses += 1; outcome = "L"
+        else:
+            ties += 1; outcome = "T"
+        recent.append({
+            "tournament_id": c["tournament_id"],
+            "tournament_name": t_name.get(c["tournament_id"], "—"),
+            "round_number": c["round_number"],
+            "my_strokes": c["total_strokes"], "my_to_par": c["total_to_par"],
+            "opp_strokes": opp["total_strokes"], "opp_to_par": opp["total_to_par"],
+            "outcome": outcome, "format": "stroke"
+        })
+
+    match_wins = match_losses = 0
+    try:
+        matches = await db.matches.find({
+            "$or": [
+                {"player1_id": me, "player2_id": other_user_id},
+                {"player1_id": other_user_id, "player2_id": me},
+            ],
+            "status": "completed"
+        }, {"_id": 0}).to_list(500)
+        for m in matches:
+            w = m.get("winner_id")
+            if w == me:
+                match_wins += 1; outcome = "W"
+            elif w == other_user_id:
+                match_losses += 1; outcome = "L"
+            else:
+                continue
+            recent.append({
+                "tournament_id": m.get("tournament_id"),
+                "tournament_name": t_name.get(m.get("tournament_id"), "Match Play"),
+                "round_number": m.get("round"),
+                "outcome": outcome, "format": "match"
+            })
+    except Exception:
+        pass
+
+    recent.sort(key=lambda r: (r.get("tournament_id") or "", r.get("round_number") or 0), reverse=True)
+    return {
+        "opponent": other,
+        "stroke_wins": wins, "stroke_losses": losses, "stroke_ties": ties,
+        "match_wins": match_wins, "match_losses": match_losses,
+        "recent": recent[:10],
+    }
+
+
 # Include router
 app.include_router(api_router)
 
@@ -3098,6 +3195,7 @@ async def startup():
     logger.info("Database indexes created")
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     logger.info(f"Upload directory: {UPLOAD_DIR}")
+
 
 @app.on_event("shutdown")
 async def shutdown():

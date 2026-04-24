@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 import { ArrowLeft, Save, Flag, MapPin, Target, ChevronLeft, ChevronRight, LayoutGrid, Camera } from 'lucide-react';
 import PhotoShareSheet from '@/components/PhotoShareSheet';
 import DistanceToGreen from '@/components/DistanceToGreen';
+import WeatherCard from '@/components/WeatherCard';
+import { celebrateScore } from '@/lib/celebrations';
 
 const TEE_COLORS = {
   black: 'bg-gray-900 text-white',
@@ -87,9 +89,10 @@ export default function PlayRound() {
       newHoles = updated;
       return updated;
     });
-    // Fire insights after the state updates
+    // Fire insights + confetti celebration after the state updates
     if (strokes > 0 && newHoles) {
       const h = newHoles[index];
+      celebrateScore(h.par, h.strokes);
       fetchAndShowInsights(h, newHoles);
     }
   };
@@ -374,6 +377,17 @@ export default function PlayRound() {
           );
         })}
       </div>
+
+      {/* Weather on hole 1 — derive coords from any pinned hole on the course */}
+      {currentHoleIndex === 0 && (() => {
+        const pinnedHole = (holes || []).find(h => h.green_lat && h.green_lng);
+        if (!pinnedHole) return null;
+        return (
+          <div className="mb-3">
+            <WeatherCard lat={pinnedHole.green_lat} lng={pinnedHole.green_lng} />
+          </div>
+        );
+      })()}
 
       {/* Current hole card (big stepper) */}
       {currentHole && (

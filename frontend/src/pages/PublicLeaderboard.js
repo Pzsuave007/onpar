@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Trophy, MapPin, Calendar, Users, ChevronDown, ChevronUp, User, Lock, Camera } from 'lucide-react';
 import { toast } from 'sonner';
+import ShareLeaderboard from '@/components/ShareLeaderboard';
 import TournamentFeed from '@/components/TournamentFeed';
 import PlayerAvatar from '@/components/PlayerAvatar';
 
@@ -65,6 +66,7 @@ export default function PublicLeaderboard() {
   const [tournaments, setTournaments] = useState([]);
   const [selectedId, setSelectedId] = useState(tournamentId || '');
   const [leaderboardData, setLeaderboardData] = useState(null);
+  const [featuredPhoto, setFeaturedPhoto] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedPlayer, setExpandedPlayer] = useState(null);
   const [accessDenied, setAccessDenied] = useState(false);
@@ -124,6 +126,18 @@ export default function PublicLeaderboard() {
       }
       setLeaderboardData(null);
     }).finally(() => setLoading(false));
+    // Fetch latest feed photo to use as featured image in share card
+    axios.get(`${API}/tournaments/${selectedId}/feed?limit=1`)
+      .then(res => {
+        const photo = (res.data?.photos || res.data || [])[0];
+        if (photo?.url_path) {
+          const base = process.env.REACT_APP_BACKEND_URL || '';
+          setFeaturedPhoto(photo.url_path.startsWith('http') ? photo.url_path : `${base}${photo.url_path}`);
+        } else {
+          setFeaturedPhoto(null);
+        }
+      })
+      .catch(() => setFeaturedPhoto(null));
   }, [selectedId]);
 
   const handleSelect = (val) => {
@@ -149,20 +163,31 @@ export default function PublicLeaderboard() {
             Leaderboard
           </h1>
         </div>
-        {tournaments.length > 0 && (
-          <Select value={selectedId} onValueChange={handleSelect}>
-            <SelectTrigger className="w-full sm:w-72 border-[#E2E3DD] bg-white" data-testid="tournament-select">
-              <SelectValue placeholder="Select tournament" />
-            </SelectTrigger>
-            <SelectContent>
-              {tournaments.map(t => (
-                <SelectItem key={t.tournament_id} value={t.tournament_id} data-testid={`select-option-${t.tournament_id}`}>
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <div className="flex items-center gap-2">
+          {tournament && leaderboard.length > 0 && (
+            <ShareLeaderboard
+              tournamentName={tournament.name}
+              courseName={tournament.course_name}
+              leaderboard={leaderboard}
+              featuredPhotoUrl={featuredPhoto}
+              scoringFormat={tournament.scoring_format}
+            />
+          )}
+          {tournaments.length > 0 && (
+            <Select value={selectedId} onValueChange={handleSelect}>
+              <SelectTrigger className="w-full sm:w-72 border-[#E2E3DD] bg-white" data-testid="tournament-select">
+                <SelectValue placeholder="Select tournament" />
+              </SelectTrigger>
+              <SelectContent>
+                {tournaments.map(t => (
+                  <SelectItem key={t.tournament_id} value={t.tournament_id} data-testid={`select-option-${t.tournament_id}`}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
 
       {loading ? (
