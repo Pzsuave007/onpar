@@ -1,11 +1,13 @@
-// Crowd-sourced GPS yardage to green.
+// Crowd-sourced GPS yardage to green + club suggestion from the user's bag.
 // - If hole has pinned coords → show live distance using navigator.geolocation
+//   AND a club suggestion derived from GET /api/profile/clubs.
 // - If not → show "Pin Green" button (for when player is standing on the green)
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { API } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Flag, Crosshair } from 'lucide-react';
+import { suggestClub } from '@/lib/clubSuggestion';
 
 // Haversine distance in meters
 function distanceMeters(lat1, lng1, lat2, lng2) {
@@ -22,9 +24,19 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
   const [pos, setPos] = useState(null);
   const [error, setError] = useState(null);
   const [pinning, setPinning] = useState(false);
+  const [clubs, setClubs] = useState([]);
   const watchId = useRef(null);
 
   const pinned = hole?.green_lat && hole?.green_lng;
+
+  // Load the user's bag once so we can suggest a club when distance is known.
+  useEffect(() => {
+    let cancelled = false;
+    axios.get(`${API}/profile/clubs`)
+      .then(r => { if (!cancelled) setClubs(r.data?.clubs || []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!navigator.geolocation) { setError('no-gps'); return; }
