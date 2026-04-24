@@ -42,6 +42,8 @@ export default function PlayRound() {
   const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
   const [showFullCard, setShowFullCard] = useState(false);
   const [showPhotoShare, setShowPhotoShare] = useState(false);
+  const [resumeRound, setResumeRound] = useState(null);   // in-progress round prompt
+  const [resumed, setResumed] = useState(false);          // prevents re-prompting
 
   useEffect(() => {
     axios.get(`${API}/courses`).then(res => {
@@ -53,6 +55,55 @@ export default function PlayRound() {
     }).catch(() => toast.error('Failed to load courses')).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
+
+  // Check for an in-progress round on mount. If the URL points to a course and we
+  // have a resume candidate at that course → auto-resume. Otherwise show a banner
+  // so the user can pick Resume or Discard.
+  useEffect(() => {
+    if (resumed) return;
+    axios.get(`${API}/rounds/in-progress`).then(res => {
+      const r = res.data;
+      if (r && r.round_id && (r.holes || []).length) {
+        setResumeRound(r);
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When both `courses` and `resumeRound` are ready, if the URL already targets
+  // the same course, auto-resume silently (better UX than an extra click).
+  useEffect(() => {
+    if (!resumeRound || resumed || !courses.length) return;
+    const c = courses.find(x => x.course_id === resumeRound.course_id);
+    if (!c) return;
+    if (courseId && courseId === resumeRound.course_id) {
+      applyResume(c, resumeRound);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeRound, courses, courseId]);
+
+  const applyResume = (course, round) => {
+    setSelectedCourse(course);
+    setSelectedTee({ name: round.tee_name || 'Default', color: 'white', holes: round.holes });
+    setHoles(round.holes);
+    setRoundId(round.round_id);
+    // Jump to the first unplayed hole, falling back to the last hole
+    const firstUnplayed = round.holes.findIndex(h => (h.strokes || 0) === 0);
+    setCurrentHoleIndex(firstUnplayed >= 0 ? firstUnplayed : round.holes.length - 1);
+    setResumed(true);
+    setResumeRound(null);
+    toast.success(`Resumed: ${round.course_name}`);
+  };
+
+  const discardResume = async () => {
+    if (!resumeRound) return;
+    try {
+      await axios.delete(`${API}/rounds/${resumeRound.round_id}`);
+    } catch { /* ignore */ }
+    setResumeRound(null);
+    setResumed(true);
+    toast.success('Round discarded');
+  };
 
   // Auto-initialize scorecard for legacy courses that have flat holes but no tees structure.
   // Must be declared at the top level (before any early returns) to keep hook order stable.
@@ -147,7 +198,8 @@ export default function PlayRound() {
     setSaving(true);
     try {
       const res = await axios.post(`${API}/rounds`, {
-        course_id: selectedCourse.course_id, round_id: roundId, holes, finish
+        course_id: selectedCourse.course_id, round_id: roundId,
+        tee_name: selectedTee?.name, holes, finish
       });
       setRoundId(res.data.round_id);
       const newBirdies = res.data.new_challenge_birdies || [];
@@ -186,6 +238,38 @@ export default function PlayRound() {
           </h1>
           <p className="text-sm text-[#6B6E66] mt-1">Choose the course you're playing today</p>
         </div>
+
+        {/* Resume in-progress round banner */}
+        {resumeRound && (
+          <Card className="border-[#C96A52] shadow-none mb-6 bg-[#C96A52]/5" data-testid="resume-round-banner">
+            <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-[#C96A52] mb-0.5">Round in progress</p>
+                <p className="font-bold text-[#1B3C35] truncate">{resumeRound.course_name}</p>
+                <p className="text-xs text-[#6B6E66]">
+                  {resumeRound.completed_holes || 0} / {resumeRound.holes?.length || 18} holes played
+                  {resumeRound.total_to_par != null && ` · ${resumeRound.total_to_par > 0 ? '+' : ''}${resumeRound.total_to_par} to par`}
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button variant="outline" className="border-[#E2E3DD] text-[#6B6E66] hover:bg-[#E8E9E3]"
+                  onClick={discardResume} data-testid="discard-round-btn">
+                  Discard
+                </Button>
+                <Button className="bg-[#C96A52] hover:bg-[#C96A52]/90"
+                  onClick={() => {
+                    const c = courses.find(x => x.course_id === resumeRound.course_id);
+                    if (c) applyResume(c, resumeRound);
+                    else toast.error('Course no longer available');
+                  }}
+                  data-testid="resume-round-btn">
+                  <Flag className="h-4 w-4 mr-1" />Resume
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {courses.length === 0 ? (
           <Card className="border-[#E2E3DD] shadow-none">
             <CardContent className="py-12 text-center">

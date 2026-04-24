@@ -1766,6 +1766,7 @@ async def save_round(request: Request):
             "holes": holes, "total_strokes": total_strokes,
             "total_to_par": total_to_par, "status": status,
             "completed_holes": completed,
+            "tee_name": body.get("tee_name"),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }})
     else:
@@ -1774,6 +1775,7 @@ async def save_round(request: Request):
             "round_id": round_id, "user_id": user["user_id"],
             "player_name": user["name"], "course_id": course_id,
             "course_name": course["course_name"],
+            "tee_name": body.get("tee_name"),
             "holes": holes, "total_strokes": total_strokes,
             "total_to_par": total_to_par, "status": status,
             "completed_holes": completed,
@@ -1817,6 +1819,32 @@ async def save_round(request: Request):
     result = await db.rounds.find_one({"round_id": round_id}, {"_id": 0})
     result["new_challenge_birdies"] = new_birdies
     return result
+
+@api_router.get("/rounds/in-progress")
+async def get_in_progress_round(request: Request):
+    """Return the current user's most recent in-progress round (if any).
+    Used by PlayRound to resume after a refresh / app kill."""
+    user = await get_current_user(request)
+    r = await db.rounds.find_one(
+        {"user_id": user["user_id"], "status": "in_progress"},
+        {"_id": 0},
+        sort=[("updated_at", -1)]
+    )
+    return r
+
+
+@api_router.delete("/rounds/{round_id}")
+async def delete_round(round_id: str, request: Request):
+    """Discard an in-progress round (user-owned only)."""
+    user = await get_current_user(request)
+    r = await db.rounds.find_one({"round_id": round_id}, {"_id": 0, "user_id": 1, "status": 1})
+    if not r:
+        raise HTTPException(status_code=404, detail="Round not found")
+    if r.get("user_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not your round")
+    await db.rounds.delete_one({"round_id": round_id})
+    return {"ok": True}
+
 
 @api_router.get("/rounds/my")
 async def get_my_rounds(request: Request):
