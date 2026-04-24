@@ -1,4 +1,4 @@
-// "Mi Bolsa" page — personal club distances, fully personalizable.
+// "My Bag" page — personal club distances, fully personalizable.
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/contexts/AuthContext';
@@ -22,7 +22,7 @@ export default function MyBag() {
         const r = await axios.get(`${API}/profile/clubs`);
         setClubs(r.data.clubs || []);
       } catch {
-        toast.error('No pude cargar tu bolsa');
+        toast.error('Failed to load your bag');
       } finally {
         setLoading(false);
       }
@@ -62,7 +62,7 @@ export default function MyBag() {
       .map(c => ({ name: (c.name || '').trim(), distance_yards: Number(c.distance_yards) || 0 }))
       .filter(c => c.name.length > 0);
     if (cleaned.length === 0) {
-      toast.error('Agregá al menos un palo');
+      toast.error('Add at least one club');
       return;
     }
     setSaving(true);
@@ -70,9 +70,9 @@ export default function MyBag() {
       const r = await axios.put(`${API}/profile/clubs`, { clubs: cleaned });
       setClubs(r.data.clubs);
       setDirty(false);
-      toast.success('✓ Bolsa guardada');
+      toast.success('✓ Bag saved');
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Error al guardar');
+      toast.error(e.response?.data?.detail || 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -80,7 +80,7 @@ export default function MyBag() {
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">
-      <p className="text-[#6B6E66] text-sm animate-pulse">Cargando bolsa…</p>
+      <p className="text-[#6B6E66] text-sm animate-pulse">Loading bag…</p>
     </div>;
   }
 
@@ -88,16 +88,16 @@ export default function MyBag() {
     <div className="min-h-screen p-4 md:p-8 max-w-2xl mx-auto fade-in" data-testid="my-bag-page">
       <Button variant="ghost" className="mb-4 text-[#6B6E66]"
         onClick={() => navigate('/dashboard')} data-testid="my-bag-back-btn">
-        <ArrowLeft className="h-4 w-4 mr-1" /> Volver
+        <ArrowLeft className="h-4 w-4 mr-1" /> Back
       </Button>
 
       <Card className="border-[#E2E3DD] shadow-none mb-4">
         <CardHeader className="pb-3">
           <CardTitle className="text-xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-            🏌️ Mi Bolsa
+            🏌️ My Bag
           </CardTitle>
           <p className="text-xs text-[#6B6E66]">
-            Distancia promedio en yardas con cada palo. Durante la ronda, te sugerimos el palo al ver la distancia al green.
+            Average yardage with each club. During a round we'll suggest the right club next to the distance-to-green.
           </p>
         </CardHeader>
       </Card>
@@ -110,14 +110,14 @@ export default function MyBag() {
                 <div className="flex flex-col">
                   <button className="text-[#6B6E66] hover:text-[#1B3C35] disabled:opacity-30 p-0.5"
                     onClick={() => moveClub(i, i - 1)} disabled={i === 0}
-                    aria-label="Subir" data-testid={`my-bag-up-${i}`}>
+                    aria-label="Move up" data-testid={`my-bag-up-${i}`}>
                     <GripVertical className="h-3 w-3" />
                   </button>
                 </div>
                 <Input
                   value={c.name}
                   onChange={e => updateClub(i, { name: e.target.value })}
-                  placeholder="Palo (ej: 7i)"
+                  placeholder="Club (e.g. 7i)"
                   className="h-10 flex-1 border-[#E2E3DD] font-medium"
                   maxLength={20}
                   data-testid={`my-bag-name-${i}`}
@@ -136,7 +136,7 @@ export default function MyBag() {
                       className="h-10 text-center text-lg font-bold text-[#1B3C35] tabular-nums border-[#E2E3DD]"
                       data-testid={`my-bag-dist-${i}`}
                     />
-                    <span className="text-[10px] text-[#6B6E66] uppercase tracking-wider">yardas</span>
+                    <span className="text-[10px] text-[#6B6E66] uppercase tracking-wider">yards</span>
                   </div>
                   <Button size="icon" variant="outline"
                     className="h-10 w-10 border-[#E2E3DD] shrink-0"
@@ -159,7 +159,7 @@ export default function MyBag() {
             className="w-full mt-3 border-dashed border-[#C96A52]/40 text-[#C96A52] hover:bg-[#C96A52]/5"
             onClick={addClub}
             data-testid="my-bag-add-btn">
-            <Plus className="h-4 w-4 mr-1" /> Agregar palo
+            <Plus className="h-4 w-4 mr-1" /> Add club
           </Button>
         </CardContent>
       </Card>
@@ -171,7 +171,7 @@ export default function MyBag() {
           disabled={saving || !dirty}
           data-testid="my-bag-save-btn">
           <Save className="h-4 w-4 mr-1" />
-          {saving ? 'Guardando…' : dirty ? 'Guardar bolsa' : 'Guardado ✓'}
+          {saving ? 'Saving…' : dirty ? 'Save bag' : 'Saved ✓'}
         </Button>
       </div>
     </div>

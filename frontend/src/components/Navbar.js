@@ -52,7 +52,7 @@ export default function Navbar() {
                 </Link>
                 <Link to="/my-bag" data-testid="nav-my-bag">
                   <Button variant="ghost" className="text-[#1B3C35] hover:bg-[#E8E9E3]">
-                    <Briefcase className="h-4 w-4 mr-1" />Mi Bolsa
+                    <Briefcase className="h-4 w-4 mr-1" />My Bag
                   </Button>
                 </Link>
               </>
@@ -106,7 +106,7 @@ export default function Navbar() {
                 <Link to="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
                   onClick={() => setMobileOpen(false)} data-testid="nav-mobile-dashboard">Dashboard</Link>
                 <Link to="/my-bag" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
-                  onClick={() => setMobileOpen(false)} data-testid="nav-mobile-my-bag">Mi Bolsa</Link>
+                  onClick={() => setMobileOpen(false)} data-testid="nav-mobile-my-bag">My Bag</Link>
               </>
             )}
             {user?.role === 'admin' && (

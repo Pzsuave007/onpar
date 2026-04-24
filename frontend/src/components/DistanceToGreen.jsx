@@ -101,18 +101,18 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
           data-testid={`club-suggestion-${hole.hole}`}>
           <span className="text-[#C96A52]">🏌️</span>
           {suggestion.mode === 'single' && (
-            <span><b>{suggestion.pick.name}</b> <span className="text-[#6B6E66]">({suggestion.pick.distance_yards}y) · cómodo</span></span>
+            <span><b>{suggestion.pick.name}</b> <span className="text-[#6B6E66]">({suggestion.pick.distance_yards}y) · comfortable</span></span>
           )}
           {suggestion.mode === 'range' && (
             <span>
-              <b>{suggestion.shorter.name}</b> <span className="text-[#6B6E66]">a favor</span>
+              <b>{suggestion.shorter.name}</b> <span className="text-[#6B6E66]">w/ wind</span>
               {' · '}
-              <b>{suggestion.longer.name}</b> <span className="text-[#6B6E66]">en contra</span>
+              <b>{suggestion.longer.name}</b> <span className="text-[#6B6E66]">into wind</span>
             </span>
           )}
           {suggestion.mode === 'forced' && (
             <span className="text-[#6B6E66]">
-              Fuera de rango — <b>{suggestion.pick.name}</b> ({suggestion.pick.distance_yards}y)
+              Out of range — <b>{suggestion.pick.name}</b> ({suggestion.pick.distance_yards}y)
             </span>
           )}
         </div>
@@ -120,7 +120,7 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
       {!suggestion && clubs.length === 0 && (
         <a href="/my-bag" className="text-[10px] text-[#C96A52] hover:underline block text-center"
           data-testid={`setup-bag-link-${hole.hole}`}>
-          Configurá tu bolsa para ver sugerencias →
+          Set up your bag to see club suggestions →
         </a>
       )}
     </div>
