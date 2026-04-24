@@ -1,0 +1,58 @@
+{
+  "summary": "E2E validation of 1v1 Quick Match feature (backend + frontend). 8/8 backend pytest passed. Frontend UI flow end-to-end verified: Dashboard quick-1v1 link → /match/1v1/new → fill opponent/course/tee/holes → Send Challenge → /play/{courseId}?match={matchId}; buddy visits /match/1v1/{id} and can Accept (→ active + redirect to /play) or Decline.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_1v1_match.py",
+    "/app/test_reports/pytest/pytest_1v1.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~3300+ lines. Consider splitting /api/matches/1v1, /api/rounds, /api/scorecards, and /api/tournaments into separate routers for maintainability.",
+    "Match1v1Detail.js: when swapping auth tokens via SPA navigation, AuthContext may cache stale user; not a bug for real users but affects automated tests. Consider re-validating user on match detail load.",
+    "NewMatch1v1.js: no empty-state or 'no opponents found' message when opponent search returns []; minor UX gap.",
+    "Match1v1Detail.js: polling every 30s is fine but consider pausing when page is hidden to reduce load."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_1v1_match.py"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "100%"
+  },
+  "test_credentials": "admin@fairway.com / FairwayAdmin123! (admin, from /app/memory/test_credentials.md); buddy@test.com / BuddyTest123! (player). Both verified via /api/auth/login.",
+  "seed_data_creation": "No persistent seed needed. Tests use existing course_992f69846733 (User-Added Test Course, Default tee, 9 holes). Pre/post cleanup deletes tournaments where is_1v1=true and scorecards where tournament_id starts with t1v1_.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Use pymongo via mongodb://localhost:27017 db=test_database to clean stale 1v1 docs between runs. Only one pending/active 1v1 match allowed per (challenger, opponent) pair — expect 409 on duplicates. When testing detail page with SPA navigation, force page.goto() (full reload) after swapping fairway_token in localStorage so AuthContext re-reads the new token.",
+  "test_cases_covered": {
+    "backend": [
+      "POST /api/matches/1v1 creates match with is_1v1=true, status=pending",
+      "POST /api/matches/1v1 rejects self-challenge (400)",
+      "POST /api/matches/1v1 rejects duplicate pending (409)",
+      "GET /api/matches/1v1/active returns match for both players",
+      "GET /api/matches/1v1/{id} returns p1_card + p2_card + course metadata",
+      "POST /api/matches/1v1/{id}/respond action=accept → status=active",
+      "POST /api/rounds with tournament_id=t1v1_* mirrors to scorecards with total_strokes/total_to_par/status=submitted",
+      "Match auto-completes with correct result.winner_id when both players submit",
+      "POST /api/matches/1v1/{id}/respond action=decline → status=declined"
+    ],
+    "frontend": [
+      "Dashboard data-testid=quick-1v1 link navigates to /match/1v1/new",
+      "/match/1v1/new renders with data-testid=new-1v1-page and all form controls",
+      "Opponent search + selection works",
+      "Course + tee + 9-hole selectors work",
+      "Send Challenge button → POST succeeds → redirect to /play/{courseId}?match={matchId}",
+      "/match/1v1/:matchId renders with data-testid=match-1v1-page",
+      "Buddy sees Accept/Decline buttons when status=pending and they are player2",
+      "Accept → toast + redirect to /play + backend status=active"
+    ]
+  }
+}

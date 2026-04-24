@@ -85,6 +85,8 @@ function AppRouter() {
         <Route path="/history" element={<ProtectedRoute><RoundHistory /></ProtectedRoute>} />
         <Route path="/my-bag" element={<ProtectedRoute><MyBag /></ProtectedRoute>} />
         <Route path="/player/:userId" element={<PlayerProfile />} />
+        <Route path="/match/1v1/new" element={<ProtectedRoute><NewMatch1v1 /></ProtectedRoute>} />
+        <Route path="/match/1v1/:matchId" element={<ProtectedRoute><Match1v1Detail /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
@@ -97,13 +99,6 @@ function App() {
       <AuthProvider>
         <AppRouter />
         <Toaster position="top-right" richColors />
-      </AuthProvider>
-    </BrowserRouter>
-  );
-}
-
-export default App;
-position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>
   );
