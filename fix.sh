@@ -27,13 +27,17 @@ echo "✓ Deps up to date"
 
 echo; echo "▸ [3/5] Copy backend + frontend"
 cp -f "$REPO/backend/server.py" "$PROD/server.py"
-if [ -d "$REPO/frontend/build" ] && [ -n "$(ls -A "$REPO/frontend/build" 2>/dev/null)" ]; then
+# Require the new build to have an index.html AND a static/js folder with at least one .js file.
+# This prevents wiping a previously-working deployment when the Emergent platform
+# has auto-cleaned frontend/build/ between agent sessions.
+NEW_JS_COUNT=$(ls "$REPO/frontend/build/static/js/"*.js 2>/dev/null | wc -l)
+if [ -f "$REPO/frontend/build/index.html" ] && [ "$NEW_JS_COUNT" -gt 0 ]; then
   rm -rf "$WEB/static"
   cp -rf "$REPO/frontend/build/"* "$WEB/"
   BUNDLE=$(grep -oE 'main\.[a-f0-9]+\.js' "$WEB/index.html" | head -1)
   echo "✓ Files deployed (frontend: $BUNDLE)"
 else
-  echo "⚠ frontend/build missing — skipping frontend"
+  echo "⚠ frontend/build incomplete (index.html=$(test -f "$REPO/frontend/build/index.html" && echo yes || echo no), js files=$NEW_JS_COUNT) — keeping existing frontend"
 fi
 
 echo; echo "▸ [4/5] Restart backend"
