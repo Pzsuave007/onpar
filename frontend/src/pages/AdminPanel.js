@@ -34,6 +34,7 @@ const emptyForm = {
 
 export default function AdminPanel() {
   const [tournaments, setTournaments] = useState([]);
+  const [tours, setTours] = useState([]);
   const [players, setPlayers] = useState([]);
   const [courses, setCourses] = useState([]);
   const [showDialog, setShowDialog] = useState(false);
@@ -52,14 +53,27 @@ export default function AdminPanel() {
   const [editPlayerName, setEditPlayerName] = useState('');
 
   const fetchTournaments = () => axios.get(`${API}/tournaments`).then(r => setTournaments(r.data));
+  const fetchTours = () => axios.get(`${API}/tours`).then(r => setTours(r.data));
   const fetchPlayers = () => axios.get(`${API}/players`).then(r => setPlayers(r.data));
   const fetchCourses = () => axios.get(`${API}/courses`).then(r => setCourses(r.data));
 
   useEffect(() => {
     fetchTournaments().catch(() => toast.error('Failed to load tournaments'));
+    fetchTours().catch(() => {});
     fetchPlayers().catch(() => {});
     fetchCourses().catch(() => {});
   }, []);
+
+  const handleDeleteTour = async (tourId) => {
+    if (!window.confirm('Delete this virtual tournament? This cannot be undone.')) return;
+    try {
+      await axios.delete(`${API}/tours/${tourId}`);
+      toast.success('Virtual tournament deleted');
+      fetchTours();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Failed to delete');
+    }
+  };
 
   const fetchRoster = async (tid) => {
     try {
@@ -382,6 +396,85 @@ export default function AdminPanel() {
                         )}
                         <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50"
                           onClick={() => handleDelete(t.tournament_id)} data-testid={`delete-btn-${t.tournament_id}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Virtual tournaments (stored in `tours` collection, separate from `tournaments`) */}
+          <div className="flex justify-between items-center mb-4 mt-8">
+            <h2 className="text-lg font-semibold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+              Virtual Tournaments
+              <span className="ml-2 text-xs text-[#6B6E66] font-normal">({tours.length})</span>
+            </h2>
+            <Link to="/tour/new/edit">
+              <Button className="bg-[#1B3C35] hover:bg-[#1B3C35]/90" data-testid="create-tour-btn">
+                <Plus className="h-4 w-4 mr-1" />New Virtual
+              </Button>
+            </Link>
+          </div>
+          {tours.length === 0 ? (
+            <Card className="border-[#E2E3DD] shadow-none">
+              <CardContent className="py-10 text-center text-[#6B6E66] text-sm">
+                No virtual tournaments yet.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {tours.map(tour => (
+                <Card key={tour.tour_id} className="border-[#E2E3DD] shadow-none hover:shadow-md transition-shadow"
+                  data-testid={`admin-tour-${tour.tour_id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-[#1B3C35]">{tour.name}</h3>
+                          {tour.visibility === 'public' ? (
+                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 text-[10px]">
+                              <Globe className="h-3 w-3 mr-0.5" />Public
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100 text-[10px]">
+                              <Lock className="h-3 w-3 mr-0.5" />Private
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className="text-[10px]">Virtual</Badge>
+                        </div>
+                        <p className="text-sm text-[#6B6E66] mt-1">
+                          {tour.start_date} to {tour.end_date}
+                          {tour.num_rounds ? ` · ${tour.num_rounds} rounds` : ''}
+                          {' · '}<Users className="inline h-3 w-3" /> {(tour.participants || []).length} players
+                        </p>
+                        {tour.invite_code && (
+                          <button className="text-xs text-[#6B6E66] mt-1 flex items-center gap-1 hover:text-[#1B3C35] transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const url = `${window.location.origin}/tours/join/${tour.invite_code}`;
+                              navigator.clipboard.writeText(url).then(() => toast.success('Invite link copied!'));
+                            }}
+                            data-testid={`tour-invite-copy-${tour.tour_id}`}>
+                            <Copy className="h-3 w-3" />Invite: {tour.invite_code}
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Link to={`/tours/${tour.tour_id}`} data-testid={`tour-view-btn-${tour.tour_id}`}>
+                          <Button size="sm" variant="outline" className="border-[#E2E3DD]">
+                            <Trophy className="h-3.5 w-3.5 mr-1" />View
+                          </Button>
+                        </Link>
+                        <Link to={`/tour/${tour.tour_id}/edit`} data-testid={`tour-edit-btn-${tour.tour_id}`}>
+                          <Button size="sm" variant="outline" className="border-[#E2E3DD]">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </Link>
+                        <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50"
+                          onClick={() => handleDeleteTour(tour.tour_id)} data-testid={`tour-delete-btn-${tour.tour_id}`}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
