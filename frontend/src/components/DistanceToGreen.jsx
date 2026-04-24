@@ -109,28 +109,56 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
         <span className="text-[10px] opacity-60">±{Math.round(pos.acc)}m</span>
       </div>
       {suggestion && (
-        <div className="text-xs text-center text-[#1B3C35] flex items-center justify-center gap-1"
+        <div className="py-2 px-3 rounded-lg bg-[#F4E9D8]/60 border border-[#C96A52]/20 text-center"
           data-testid={`club-suggestion-${hole.hole}`}>
-          <span className="text-[#C96A52]">🏌️</span>
+          <div className="text-[10px] text-[#6B6E66] uppercase tracking-wider font-bold mb-1 flex items-center justify-center gap-1">
+            <span>🏌️</span> Suggested club
+          </div>
           {suggestion.mode === 'single' && (
-            <span><b>{suggestion.pick.name}</b> <span className="text-[#6B6E66]">({suggestion.pick.distance_yards}y) · comfortable</span></span>
+            <div className="flex items-baseline justify-center gap-2">
+              <span className="text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+                {suggestion.pick.name}
+              </span>
+              <span className="text-sm text-[#6B6E66] tabular-nums">
+                ({suggestion.pick.distance_yards}y · comfortable)
+              </span>
+            </div>
           )}
           {suggestion.mode === 'range' && (
-            <span>
-              <b>{suggestion.shorter.name}</b> <span className="text-[#6B6E66]">w/ wind</span>
-              {' · '}
-              <b>{suggestion.longer.name}</b> <span className="text-[#6B6E66]">into wind</span>
-            </span>
+            <div className="flex items-stretch justify-center gap-2 text-center">
+              <div className="flex-1">
+                <div className="text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+                  {suggestion.shorter.name}
+                </div>
+                <div className="text-[11px] text-[#6B6E66]">
+                  {suggestion.shorter.distance_yards}y · w/ wind
+                </div>
+              </div>
+              <div className="text-[#C96A52] self-center text-sm">or</div>
+              <div className="flex-1">
+                <div className="text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+                  {suggestion.longer.name}
+                </div>
+                <div className="text-[11px] text-[#6B6E66]">
+                  {suggestion.longer.distance_yards}y · into wind
+                </div>
+              </div>
+            </div>
           )}
           {suggestion.mode === 'forced' && (
-            <span className="text-[#6B6E66]">
-              Out of range — <b>{suggestion.pick.name}</b> ({suggestion.pick.distance_yards}y)
-            </span>
+            <div>
+              <span className="text-2xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+                {suggestion.pick.name}
+              </span>
+              <div className="text-[11px] text-[#6B6E66] mt-0.5">
+                Out of range · {suggestion.pick.distance_yards}y max
+              </div>
+            </div>
           )}
         </div>
       )}
       {!suggestion && clubs.length === 0 && (
-        <a href="/my-bag" className="text-[10px] text-[#C96A52] hover:underline block text-center"
+        <a href="/my-bag" className="text-xs text-[#C96A52] hover:underline block text-center py-1"
           data-testid={`setup-bag-link-${hole.hole}`}>
           Set up your bag to see club suggestions →
         </a>
