@@ -1,0 +1,26 @@
+[Unit]
+Description=OnPar Live FastAPI backend
+Documentation=https://onparlive.com
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/onpar/backend
+Environment="PATH=/opt/onpar/backend/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/opt/onpar/backend/venv/bin/uvicorn server:app --host 0.0.0.0 --port 8005
+# Restart automatically on crash (e.g. OOM, unhandled exception).
+Restart=on-failure
+RestartSec=3
+# Ensure the process and its children are cleanly terminated on stop.
+KillMode=control-group
+KillSignal=SIGTERM
+# Allow up to 10s for graceful shutdown; after that force-kill.
+TimeoutStopSec=10
+# Logs go to journald (view with: journalctl -u onpar-backend -f)
+# and duplicated to a file for quick tailing.
+StandardOutput=append:/opt/onpar/backend/backend.log
+StandardError=append:/opt/onpar/backend/backend.log
+
+[Install]
+WantedBy=multi-user.target

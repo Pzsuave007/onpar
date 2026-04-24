@@ -47,12 +47,29 @@ The production server has 1 GB of RAM and **will crash if you try to build there
 - Runs `yarn install --ignore-engines` and `yarn build`
 - Output lives in `/app/frontend/build/`
 
-### `/app/fix.sh` (runs on owner's server)
-Reads from `$REPO/frontend/build/`. **If build/ isn't in the repo, nothing updates.**
+### `/app/fix.sh` (runs on owner's server) — systemd edition (Apr 24, 2026)
+Reads from `$REPO/frontend/build/`, copies files, then `systemctl restart onpar-backend`. **If build/ isn't in the repo, frontend is kept as-is (no wipe) and backend still restarts.**
+
 Path map on the server:
 - Repo: `/home/onparliveuni2/repo`
-- Backend: `/opt/onpar/backend` (Python venv, uvicorn on port 8005 via nohup)
+- Backend: `/opt/onpar/backend` (Python venv, uvicorn on port 8005 — **managed by systemd, not nohup**)
 - Web: `/home/onparliveuni2/public_html`
+- systemd unit: `/etc/systemd/system/onpar-backend.service` (installed by `deploy/setup_systemd.sh`)
+
+First-time setup on a fresh server: `sudo bash deploy/setup_systemd.sh` (one-time).
+Every deploy after: `cd $REPO && git pull && bash fix.sh`.
+
+Useful server commands (owner already knows these):
+- `systemctl status onpar-backend`
+- `systemctl restart onpar-backend`
+- `journalctl -u onpar-backend -f` (live logs)
+
+### Why systemd — the `uvicorn --reload` zombie trap that broke prod multiple times
+Before the systemd migration, `fix.sh` used `nohup uvicorn server:app --reload &` and stopped it with `pkill -9 -f uvicorn`. That was fragile because `uvicorn --reload` spawns a parent reloader + worker pair; `pkill` can kill the worker while the reloader re-spawns it with the old module cache, or an orphan worker keeps holding port 8005 so the new `uvicorn` process silently fails to bind. Users ended up with "stale code" in production — backend running old code while frontend showed new UI — and saw errors like `Not Found` / `Method Not Allowed` on brand-new endpoints.
+
+systemd owns the process group, uses `KillMode=control-group` to kill every child, and `systemctl restart` is idempotent and race-free. We also removed `--reload` from the production command — reload is a dev-only feature.
+
+**If a future agent reverts to `nohup` / `pkill` in `fix.sh`, they WILL break prod.** The regression guard is step 5 in the new `fix.sh` — it probes recently-added endpoints (`/api/profile/clubs`, `/api/notifications`) after restart and fails the deploy with non-zero exit if any returns 404 (means stale code).
 
 ### The `.gitignore` trap (this broke prod once)
 `frontend/.gitignore` USED TO have `/build` which meant "Save to Github" never pushed the compiled files. The owner ran `fix.sh` for days with no effect. This is fixed: **`/build` is commented out in `frontend/.gitignore`**. If you ever re-add it, deploys silently stop working. Do not re-add it.
@@ -240,4 +257,4 @@ MongoDB responses **must exclude `_id`** (`{"_id": 0}` projection). ObjectId is 
 
 ---
 
-Last updated: 2026-04-24 by E1 fork agent (OnPar Live golf app). Added the `frontend/build/` disappearance trap + hardened `fix.sh` guard.
+Last updated: 2026-04-24 (PM) by E1 fork agent — migrated prod backend from `nohup uvicorn --reload + pkill` to a systemd service (`onpar-backend.service`). `fix.sh` now does `systemctl restart`.
