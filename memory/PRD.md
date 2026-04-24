@@ -38,6 +38,14 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 ### Phase 5 - Game Modes
 - Play a Round, Birdie Challenge (with invite links), Virtual Tours
 
+### Phase 13 - 1v1 Quick Match (Apr 24, 2026)
+- New mini-tournament between 2 players for stroke play (9 or 18 holes).
+- Endpoints: POST /api/matches/1v1, GET /api/matches/1v1/active, GET /api/matches/1v1/{id}, POST /api/matches/1v1/{id}/respond
+- Reuses tournaments collection (`is_1v1: true`, `player1_id`, `player2_id`); rounds saved via /api/rounds with `tournament_id` mirror automatically into `scorecards` so live opponent comparison + H2H stats update.
+- Frontend pages: /match/1v1/new (NewMatch1v1.js) and /match/1v1/:matchId (Match1v1Detail.js). Dashboard has a quick-1v1 entry card.
+- Bugfix shipped same day: routes were registered in App.js (were imported but missing <Route>) and a duplicate orphan code block at end of App.js (SyntaxError) was removed.
+- E2E validated: 8/8 backend pytest + 100% frontend flow (testing_agent_v3_fork iteration_9).
+
 ### Phase 6 - Landing Page
 - Redesigned landing page showcasing all features
 
@@ -117,7 +125,10 @@ Solves the "10 players in 4 cities" pain: creator can pre-assign a course per pl
 
 ## Admin Credentials
 - Email: admin@fairway.com / Password: FairwayAdmin123!
+## Test Credentials for Test Suite
+- Email: admin@fairway.com / Password: FairwayAdmin123! (admin)
 - Email: pzsuave007@gmail.com / Password: MXmedia007 (primary admin)
+- Email: buddy@test.com / Password: BuddyTest123! (player, used for 1v1 E2E tests)
 
 ## Key DB Schemas
 - `users`: {email, name, role, auth_type, password_hash, avatar_url, handicap}

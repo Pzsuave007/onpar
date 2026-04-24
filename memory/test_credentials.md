@@ -17,3 +17,9 @@ Backend: https://onparlive.com (also used locally via REACT_APP_BACKEND_URL)
 - JWT Bearer token stored as `fairway_token` in localStorage
 - Token also accepted via `session_token` cookie (set on Google OAuth callback)
 - Backend endpoint: POST /api/auth/login with `{email, password}` returns `{token, user}`
+
+## Test Player (E2E)
+- Email: buddy@test.com
+- Password: BuddyTest123!
+- Role: player
+- Used by 1v1 Quick Match E2E flow (created Apr 24, 2026)
