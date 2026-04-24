@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth, API } from '@/contexts/AuthContext';
 import axios from 'axios';
@@ -218,6 +218,36 @@ export default function PlayRound() {
       setSaving(false);
     }
   };
+
+  // Silent auto-save (no toast, no navigation, no loading state). Debounced
+  // 2s after the last score change so we don't spam the server on every tap.
+  const autoSaveTimer = useRef(null);
+  const autoSaveInFlight = useRef(false);
+  const doAutoSave = async () => {
+    if (autoSaveInFlight.current) return;
+    if (!selectedCourse || !holes.length) return;
+    if (!holes.some(h => h.strokes > 0)) return;  // nothing to save yet
+    autoSaveInFlight.current = true;
+    try {
+      const res = await axios.post(`${API}/rounds`, {
+        course_id: selectedCourse.course_id, round_id: roundId,
+        tee_name: selectedTee?.name, holes, finish: false,
+      });
+      if (res.data?.round_id && res.data.round_id !== roundId) {
+        setRoundId(res.data.round_id);
+      }
+    } catch { /* silent */ } finally {
+      autoSaveInFlight.current = false;
+    }
+  };
+  useEffect(() => {
+    if (!selectedCourse || !holes.length) return;
+    if (!holes.some(h => h.strokes > 0)) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(doAutoSave, 2000);
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holes, selectedCourse]);
 
   if (loading) {
     return (
