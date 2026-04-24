@@ -1818,6 +1818,51 @@ async def save_round(request: Request):
 
     result = await db.rounds.find_one({"round_id": round_id}, {"_id": 0})
     result["new_challenge_birdies"] = new_birdies
+
+    # 1v1 mirror: if the request specifies a tournament_id and that tournament
+    # is a 1v1 match the user is part of, mirror the score to `scorecards`
+    # so the live opponent comparison + H2H stats work automatically.
+    tournament_id = body.get("tournament_id")
+    if tournament_id:
+        t = await db.tournaments.find_one({"tournament_id": tournament_id, "is_1v1": True}, {"_id": 0})
+        if t and user["user_id"] in (t.get("player1_id"), t.get("player2_id")):
+            holes_data = []
+            for h in holes:
+                holes_data.append({
+                    "hole": h.get("hole"), "par": h.get("par"),
+                    "strokes": int(h.get("strokes") or 0)
+                })
+            played = [h for h in holes_data if h["strokes"] > 0]
+            sc_total_strokes = sum(h["strokes"] for h in played)
+            sc_total_par = sum(h["par"] for h in played)
+            sc_to_par = sc_total_strokes - sc_total_par
+            sc_status = "submitted" if (finish or len(played) == len(holes_data)) else "in_progress"
+            existing_sc = await db.scorecards.find_one(
+                {"tournament_id": tournament_id, "user_id": user["user_id"], "round_number": 1},
+                {"_id": 0}
+            )
+            sc_doc = {
+                "tournament_id": tournament_id,
+                "user_id": user["user_id"],
+                "player_name": user["name"],
+                "round_number": 1,
+                "holes": holes_data,
+                "total_strokes": sc_total_strokes,
+                "total_to_par": sc_to_par,
+                "completed_holes": len(played),
+                "status": sc_status,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if existing_sc:
+                await db.scorecards.update_one(
+                    {"scorecard_id": existing_sc["scorecard_id"]},
+                    {"$set": sc_doc}
+                )
+            else:
+                sc_doc["scorecard_id"] = f"sc_{uuid.uuid4().hex[:12]}"
+                sc_doc["created_at"] = datetime.now(timezone.utc).isoformat()
+                await db.scorecards.insert_one(sc_doc)
+
     return result
 
 @api_router.get("/rounds/in-progress")
@@ -3085,6 +3130,193 @@ async def get_my_photo_targets(request: Request):
             "course_name": t.get("course_name", "")
         })
     return targets
+
+
+# --- 1v1 Quick Match (Phase 1: tournament with is_1v1 flag) ---
+
+@api_router.post("/matches/1v1")
+async def create_1v1_match(request: Request):
+    """Create a private 2-player stroke-play tournament between the current
+    user and the chosen opponent. The opponent is added as a participant
+    immediately so both players' scorecards count for H2H, and an in-app
+    notification is sent to the opponent.
+
+    Body: { opponent_id, course_id, tee_name, num_holes (9|18), date?, name? }
+    """
+    user = await get_current_user(request)
+    body = await request.json()
+    opponent_id = body.get("opponent_id")
+    course_id = body.get("course_id")
+    tee_name = body.get("tee_name") or "Default"
+    num_holes = int(body.get("num_holes") or 18)
+    if not opponent_id or not course_id:
+        raise HTTPException(status_code=400, detail="opponent_id and course_id required")
+    if opponent_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Cannot challenge yourself")
+    opp = await db.users.find_one({"user_id": opponent_id}, {"_id": 0, "name": 1, "user_id": 1})
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opponent not found")
+    course = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    # Reject if a pending/active 1v1 already exists between these two
+    existing = await db.tournaments.find_one({
+        "is_1v1": True,
+        "status": {"$in": ["pending", "active"]},
+        "$or": [
+            {"player1_id": user["user_id"], "player2_id": opponent_id},
+            {"player1_id": opponent_id, "player2_id": user["user_id"]},
+        ],
+    })
+    if existing:
+        raise HTTPException(status_code=409, detail="You already have an active 1v1 with this player")
+
+    name = body.get("name") or f"{user['name']} vs {opp['name']}"
+    today = body.get("date") or datetime.now(timezone.utc).date().isoformat()
+    tournament_id = f"t1v1_{uuid.uuid4().hex[:10]}"
+    t_doc = {
+        "tournament_id": tournament_id,
+        "name": name,
+        "course_id": course_id,
+        "course_name": course.get("course_name"),
+        "tee_name": tee_name,
+        "scoring_format": "stroke",
+        "num_rounds": 1,
+        "num_holes": num_holes,
+        "visibility": "private",
+        "status": "pending",   # becomes 'active' once opponent accepts
+        "is_1v1": True,
+        "player1_id": user["user_id"],
+        "player1_name": user["name"],
+        "player2_id": opponent_id,
+        "player2_name": opp["name"],
+        "participants": [
+            {"user_id": user["user_id"], "name": user["name"], "joined_at": datetime.now(timezone.utc).isoformat()},
+        ],
+        "start_date": today,
+        "end_date": today,
+        "created_by": user["user_id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.tournaments.insert_one(t_doc)
+    # Send in-app notification to opponent
+    try:
+        await _create_notification(
+            opponent_id, "1v1_invite",
+            f"🥊 {user['name']} challenges you",
+            f"Stroke play · {course.get('course_name')} · {num_holes} holes",
+            link=f"/match/1v1/{tournament_id}",
+            meta={"match_id": tournament_id, "challenger_id": user["user_id"]},
+        )
+    except Exception:
+        pass
+    t_doc.pop("_id", None)
+    return t_doc
+
+
+@api_router.post("/matches/1v1/{match_id}/respond")
+async def respond_1v1(match_id: str, request: Request):
+    """Opponent accepts or declines a pending 1v1. Body: { action: 'accept'|'decline' }"""
+    user = await get_current_user(request)
+    body = await request.json()
+    action = (body.get("action") or "").lower()
+    if action not in ("accept", "decline"):
+        raise HTTPException(status_code=400, detail="action must be accept or decline")
+    t = await db.tournaments.find_one({"tournament_id": match_id, "is_1v1": True}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Match not found")
+    if t.get("player2_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not your match to respond to")
+    if t.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Match already resolved")
+    if action == "decline":
+        await db.tournaments.update_one({"tournament_id": match_id}, {"$set": {"status": "declined"}})
+        # Notify challenger
+        try:
+            await _create_notification(
+                t["player1_id"], "1v1_declined",
+                f"{user['name']} declined your match",
+                f"{t['course_name']} · {t.get('num_holes', 18)} holes",
+                link=f"/match/1v1/{match_id}",
+            )
+        except Exception:
+            pass
+        return {"ok": True, "status": "declined"}
+    # Accept: add player2 to participants, mark active
+    parts = t.get("participants") or []
+    if not any(p.get("user_id") == user["user_id"] for p in parts):
+        parts.append({
+            "user_id": user["user_id"], "name": user["name"],
+            "joined_at": datetime.now(timezone.utc).isoformat()
+        })
+    await db.tournaments.update_one(
+        {"tournament_id": match_id},
+        {"$set": {"status": "active", "participants": parts,
+                  "accepted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    try:
+        await _create_notification(
+            t["player1_id"], "1v1_accepted",
+            f"{user['name']} accepted — game on!",
+            f"{t['course_name']} · {t.get('num_holes', 18)} holes",
+            link=f"/match/1v1/{match_id}",
+        )
+    except Exception:
+        pass
+    return {"ok": True, "status": "active"}
+
+
+@api_router.get("/matches/1v1/active")
+async def list_my_1v1_matches(request: Request):
+    """Active or pending 1v1s involving the current user."""
+    user = await get_current_user(request)
+    docs = await db.tournaments.find({
+        "is_1v1": True,
+        "status": {"$in": ["pending", "active"]},
+        "$or": [{"player1_id": user["user_id"]}, {"player2_id": user["user_id"]}],
+    }, {"_id": 0}).sort("created_at", -1).to_list(20)
+    return docs
+
+
+@api_router.get("/matches/1v1/{match_id}")
+async def get_1v1_match(match_id: str, request: Request):
+    """Match detail with both players' running totals (for live comparison)."""
+    user = await get_current_user(request)
+    t = await db.tournaments.find_one({"tournament_id": match_id, "is_1v1": True}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Match not found")
+    if user["user_id"] not in (t.get("player1_id"), t.get("player2_id")):
+        raise HTTPException(status_code=403, detail="Not in this match")
+    # Pull both players' scorecards (round_number=1 only — single round match)
+    cards = await db.scorecards.find(
+        {"tournament_id": match_id, "round_number": 1},
+        {"_id": 0, "user_id": 1, "total_strokes": 1, "total_to_par": 1,
+         "completed_holes": 1, "status": 1, "player_name": 1}
+    ).to_list(10)
+    by_uid = {c["user_id"]: c for c in cards}
+    p1 = by_uid.get(t["player1_id"])
+    p2 = by_uid.get(t["player2_id"])
+    # Determine final result if both submitted
+    result = None
+    if p1 and p2 and p1.get("status") == "submitted" and p2.get("status") == "submitted":
+        if p1["total_strokes"] < p2["total_strokes"]:
+            result = {"winner_id": t["player1_id"], "winner_name": t["player1_name"]}
+        elif p2["total_strokes"] < p1["total_strokes"]:
+            result = {"winner_id": t["player2_id"], "winner_name": t["player2_name"]}
+        else:
+            result = {"winner_id": None, "winner_name": "Tie"}
+        if t.get("status") != "completed":
+            await db.tournaments.update_one(
+                {"tournament_id": match_id},
+                {"$set": {"status": "completed", "result": result,
+                          "completed_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            t["status"] = "completed"
+    return {**t, "p1_card": p1, "p2_card": p2, "result": result or t.get("result")}
+
+
+# --- end 1v1 Quick Match ---
 
 
 @api_router.get("/profile/head-to-head/{other_user_id}")

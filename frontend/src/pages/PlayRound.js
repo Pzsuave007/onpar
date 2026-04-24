@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth, API } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +29,8 @@ function getTeeStyle(color) {
 
 export default function PlayRound() {
   const { courseId } = useParams();
+  const [searchParams] = useSearchParams();
+  const matchId = searchParams.get('match');     // 1v1 tournament id (optional)
   const navigate = useNavigate();
   const { user } = useAuth();
   const [courses, setCourses] = useState([]);
@@ -199,7 +201,8 @@ export default function PlayRound() {
     try {
       const res = await axios.post(`${API}/rounds`, {
         course_id: selectedCourse.course_id, round_id: roundId,
-        tee_name: selectedTee?.name, holes, finish
+        tee_name: selectedTee?.name, holes, finish,
+        tournament_id: matchId || undefined,
       });
       setRoundId(res.data.round_id);
       const newBirdies = res.data.new_challenge_birdies || [];
@@ -232,6 +235,7 @@ export default function PlayRound() {
       const res = await axios.post(`${API}/rounds`, {
         course_id: selectedCourse.course_id, round_id: roundId,
         tee_name: selectedTee?.name, holes, finish: false,
+        tournament_id: matchId || undefined,
       });
       if (res.data?.round_id && res.data.round_id !== roundId) {
         setRoundId(res.data.round_id);

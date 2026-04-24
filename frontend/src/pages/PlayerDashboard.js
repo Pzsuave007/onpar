@@ -5,7 +5,7 @@ import axios from 'axios';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Target, Calendar, CirclePlay, Camera, ChevronRight, Flame, MapPin, Loader2, User } from 'lucide-react';
+import { Trophy, Target, Calendar, CirclePlay, Camera, ChevronRight, Flame, MapPin, Loader2, User, Swords } from 'lucide-react';
 import { toast } from 'sonner';
 
 function formatToPar(score) {
@@ -114,7 +114,7 @@ export default function PlayerDashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <Link to="/play" data-testid="quick-play">
           <div className="bg-[#C96A52] rounded-xl p-4 text-white active:scale-[0.98] transition-transform">
             <CirclePlay className="h-6 w-6 mb-2" />
@@ -125,6 +125,17 @@ export default function PlayerDashboard() {
           <div className="bg-[#1B3C35] rounded-xl p-4 text-white active:scale-[0.98] transition-transform">
             <Target className="h-6 w-6 mb-2" />
             <p className="text-sm font-bold">Challenges</p>
+          </div>
+        </Link>
+      </div>
+      <div className="mb-5">
+        <Link to="/match/1v1/new" data-testid="quick-1v1">
+          <div className="bg-gradient-to-r from-[#1D2D44] to-[#1B3C35] rounded-xl p-4 text-white active:scale-[0.98] transition-transform flex items-center gap-3">
+            <Swords className="h-6 w-6 text-[#C96A52] shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold">1v1 Quick Match</p>
+              <p className="text-[10px] text-white/70">Challenge a friend · stroke play · counts in head-to-head</p>
+            </div>
           </div>
         </Link>
       </div>

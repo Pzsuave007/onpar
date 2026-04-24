@@ -26,6 +26,8 @@ import Bracket from '@/pages/Bracket';
 import ScorerAssignments from '@/pages/ScorerAssignments';
 import CourseSearch from '@/pages/CourseSearch';
 import MyBag from '@/pages/MyBag';
+import NewMatch1v1 from '@/pages/NewMatch1v1';
+import Match1v1Detail from '@/pages/Match1v1Detail';
 import '@/App.css';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -95,6 +97,13 @@ function App() {
       <AuthProvider>
         <AppRouter />
         <Toaster position="top-right" richColors />
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}
+
+export default App;
+position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>
   );
