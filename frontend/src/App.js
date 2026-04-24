@@ -25,6 +25,7 @@ import TournamentTeams from '@/pages/TournamentTeams';
 import Bracket from '@/pages/Bracket';
 import ScorerAssignments from '@/pages/ScorerAssignments';
 import CourseSearch from '@/pages/CourseSearch';
+import MyBag from '@/pages/MyBag';
 import '@/App.css';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -80,6 +81,7 @@ function AppRouter() {
         <Route path="/tour/:tourId/edit" element={<ProtectedRoute><VirtualTournamentEdit /></ProtectedRoute>} />
         <Route path="/tours/join/:inviteCode" element={<InviteAccept />} />
         <Route path="/history" element={<ProtectedRoute><RoundHistory /></ProtectedRoute>} />
+        <Route path="/my-bag" element={<ProtectedRoute><MyBag /></ProtectedRoute>} />
         <Route path="/player/:userId" element={<PlayerProfile />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

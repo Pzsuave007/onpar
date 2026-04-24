@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Flag, LayoutDashboard, Shield, LogOut, Menu, X, Target, CirclePlay, Trophy } from 'lucide-react';
+import { Flag, LayoutDashboard, Shield, LogOut, Menu, X, Target, CirclePlay, Trophy, Briefcase } from 'lucide-react';
 import { useState } from 'react';
 import NotificationBell from '@/components/NotificationBell';
 
@@ -48,6 +48,11 @@ export default function Navbar() {
                 <Link to="/dashboard" data-testid="nav-dashboard">
                   <Button variant="ghost" className="text-[#1B3C35] hover:bg-[#E8E9E3]">
                     <LayoutDashboard className="h-4 w-4 mr-1" />Dashboard
+                  </Button>
+                </Link>
+                <Link to="/my-bag" data-testid="nav-my-bag">
+                  <Button variant="ghost" className="text-[#1B3C35] hover:bg-[#E8E9E3]">
+                    <Briefcase className="h-4 w-4 mr-1" />Mi Bolsa
                   </Button>
                 </Link>
               </>
@@ -100,6 +105,8 @@ export default function Navbar() {
                   onClick={() => setMobileOpen(false)} data-testid="nav-mobile-play">Play a Round</Link>
                 <Link to="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
                   onClick={() => setMobileOpen(false)} data-testid="nav-mobile-dashboard">Dashboard</Link>
+                <Link to="/my-bag" className="block px-3 py-2 rounded-lg hover:bg-[#E8E9E3] text-[#1B3C35]"
+                  onClick={() => setMobileOpen(false)} data-testid="nav-mobile-my-bag">Mi Bolsa</Link>
               </>
             )}
             {user?.role === 'admin' && (

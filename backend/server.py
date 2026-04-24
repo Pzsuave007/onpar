@@ -1317,6 +1317,65 @@ async def update_profile(request: Request):
     result = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
     return result
 
+
+DEFAULT_CLUBS = [
+    {"name": "Driver", "distance_yards": 240},
+    {"name": "3-Wood", "distance_yards": 220},
+    {"name": "5-Wood", "distance_yards": 205},
+    {"name": "4-Hybrid", "distance_yards": 195},
+    {"name": "5i", "distance_yards": 180},
+    {"name": "6i", "distance_yards": 170},
+    {"name": "7i", "distance_yards": 155},
+    {"name": "8i", "distance_yards": 140},
+    {"name": "9i", "distance_yards": 125},
+    {"name": "PW", "distance_yards": 110},
+    {"name": "GW", "distance_yards": 95},
+    {"name": "SW", "distance_yards": 80},
+    {"name": "LW", "distance_yards": 60},
+]
+
+
+@api_router.get("/profile/clubs")
+async def get_my_clubs(request: Request):
+    """Return the current user's personal club distances (My Bag).
+    First-time users get the DEFAULT_CLUBS as a seed."""
+    user = await get_current_user(request)
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "clubs": 1})
+    clubs = (u or {}).get("clubs")
+    if not clubs:
+        return {"clubs": DEFAULT_CLUBS, "seeded": True}
+    return {"clubs": clubs, "seeded": False}
+
+
+@api_router.put("/profile/clubs")
+async def update_my_clubs(request: Request):
+    """Replace the current user's club list entirely."""
+    user = await get_current_user(request)
+    body = await request.json()
+    raw = body.get("clubs") or []
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="clubs must be a list")
+    if len(raw) > 30:
+        raise HTTPException(status_code=400, detail="Too many clubs (max 30)")
+    cleaned = []
+    for c in raw:
+        name = (c.get("name") or "").strip()[:20]
+        if not name:
+            continue
+        try:
+            dist = int(c.get("distance_yards") or 0)
+        except (TypeError, ValueError):
+            dist = 0
+        if dist < 0 or dist > 400:
+            continue
+        cleaned.append({"name": name, "distance_yards": dist})
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"clubs": cleaned, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"clubs": cleaned}
+
+
 @api_router.post("/profile/avatar")
 async def upload_avatar(request: Request, file: UploadFile = File(...)):
     user = await get_current_user(request)

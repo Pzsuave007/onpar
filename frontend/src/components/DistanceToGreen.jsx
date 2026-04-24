@@ -84,15 +84,45 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
 
   const meters = distanceMeters(pos.lat, pos.lng, hole.green_lat, hole.green_lng);
   const yards = Math.round(meters * 1.09361);
+  const suggestion = suggestClub(yards, clubs);
   return (
-    <div className="flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg bg-[#1B3C35] text-white"
-      data-testid={`distance-${hole.hole}`}>
-      <Flag className="h-4 w-4 text-[#C96A52]" />
-      <span className="text-xs uppercase tracking-wider font-bold opacity-75">To Green</span>
-      <span className="text-lg font-bold tabular-nums" style={{ fontFamily: 'Outfit' }}>
-        {yards}y
-      </span>
-      <span className="text-[10px] opacity-60">±{Math.round(pos.acc)}m</span>
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg bg-[#1B3C35] text-white"
+        data-testid={`distance-${hole.hole}`}>
+        <Flag className="h-4 w-4 text-[#C96A52]" />
+        <span className="text-xs uppercase tracking-wider font-bold opacity-75">To Green</span>
+        <span className="text-lg font-bold tabular-nums" style={{ fontFamily: 'Outfit' }}>
+          {yards}y
+        </span>
+        <span className="text-[10px] opacity-60">±{Math.round(pos.acc)}m</span>
+      </div>
+      {suggestion && (
+        <div className="text-xs text-center text-[#1B3C35] flex items-center justify-center gap-1"
+          data-testid={`club-suggestion-${hole.hole}`}>
+          <span className="text-[#C96A52]">🏌️</span>
+          {suggestion.mode === 'single' && (
+            <span><b>{suggestion.pick.name}</b> <span className="text-[#6B6E66]">({suggestion.pick.distance_yards}y) · cómodo</span></span>
+          )}
+          {suggestion.mode === 'range' && (
+            <span>
+              <b>{suggestion.shorter.name}</b> <span className="text-[#6B6E66]">a favor</span>
+              {' · '}
+              <b>{suggestion.longer.name}</b> <span className="text-[#6B6E66]">en contra</span>
+            </span>
+          )}
+          {suggestion.mode === 'forced' && (
+            <span className="text-[#6B6E66]">
+              Fuera de rango — <b>{suggestion.pick.name}</b> ({suggestion.pick.distance_yards}y)
+            </span>
+          )}
+        </div>
+      )}
+      {!suggestion && clubs.length === 0 && (
+        <a href="/my-bag" className="text-[10px] text-[#C96A52] hover:underline block text-center"
+          data-testid={`setup-bag-link-${hole.hole}`}>
+          Configurá tu bolsa para ver sugerencias →
+        </a>
+      )}
     </div>
   );
 }
