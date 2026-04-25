@@ -26,8 +26,8 @@ import Bracket from '@/pages/Bracket';
 import ScorerAssignments from '@/pages/ScorerAssignments';
 import CourseSearch from '@/pages/CourseSearch';
 import MyBag from '@/pages/MyBag';
-import NewMatch1v1 from '@/pages/NewMatch1v1';
-import Match1v1Detail from '@/pages/Match1v1Detail';
+import NewMatch from '@/pages/NewMatch';
+import MatchDetail from '@/pages/MatchDetail';
 import '@/App.css';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -85,8 +85,8 @@ function AppRouter() {
         <Route path="/history" element={<ProtectedRoute><RoundHistory /></ProtectedRoute>} />
         <Route path="/my-bag" element={<ProtectedRoute><MyBag /></ProtectedRoute>} />
         <Route path="/player/:userId" element={<PlayerProfile />} />
-        <Route path="/match/1v1/new" element={<ProtectedRoute><NewMatch1v1 /></ProtectedRoute>} />
-        <Route path="/match/1v1/:matchId" element={<ProtectedRoute><Match1v1Detail /></ProtectedRoute>} />
+        <Route path="/match/new" element={<ProtectedRoute><NewMatch /></ProtectedRoute>} />
+        <Route path="/match/:matchId" element={<ProtectedRoute><MatchDetail /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

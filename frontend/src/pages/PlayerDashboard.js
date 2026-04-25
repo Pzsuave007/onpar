@@ -129,12 +129,12 @@ export default function PlayerDashboard() {
         </Link>
       </div>
       <div className="mb-5">
-        <Link to="/match/1v1/new" data-testid="quick-1v1">
+        <Link to="/match/new" data-testid="quick-match">
           <div className="bg-gradient-to-r from-[#1D2D44] to-[#1B3C35] rounded-xl p-4 text-white active:scale-[0.98] transition-transform flex items-center gap-3">
             <Swords className="h-6 w-6 text-[#C96A52] shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold">1v1 Quick Match</p>
-              <p className="text-[10px] text-white/70">Challenge a friend · stroke play · counts in head-to-head</p>
+              <p className="text-sm font-bold">Match</p>
+              <p className="text-[10px] text-white/70">2-8 friends · stroke / match play / best ball · counts in your stats</p>
             </div>
           </div>
         </Link>

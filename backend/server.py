@@ -1819,13 +1819,27 @@ async def save_round(request: Request):
     result = await db.rounds.find_one({"round_id": round_id}, {"_id": 0})
     result["new_challenge_birdies"] = new_birdies
 
-    # 1v1 mirror: if the request specifies a tournament_id and that tournament
-    # is a 1v1 match the user is part of, mirror the score to `scorecards`
-    # so the live opponent comparison + H2H stats work automatically.
+    # 1v1 / Match mirror: if the request specifies a tournament_id and that tournament
+    # is a 1v1 match OR a multi-player Match the user is part of, mirror the score to
+    # `scorecards` so the live opponent comparison + H2H stats work automatically.
     tournament_id = body.get("tournament_id")
     if tournament_id:
-        t = await db.tournaments.find_one({"tournament_id": tournament_id, "is_1v1": True}, {"_id": 0})
-        if t and user["user_id"] in (t.get("player1_id"), t.get("player2_id")):
+        t = await db.tournaments.find_one(
+            {"tournament_id": tournament_id,
+             "$or": [{"is_1v1": True}, {"is_match": True}]},
+            {"_id": 0}
+        )
+        is_in_match = False
+        if t:
+            if t.get("is_1v1"):
+                is_in_match = user["user_id"] in (t.get("player1_id"), t.get("player2_id"))
+            elif t.get("is_match"):
+                # multi-player Match: only accepted players mirror to scorecards
+                is_in_match = any(
+                    p.get("user_id") == user["user_id"] and p.get("status") == "accepted"
+                    for p in (t.get("players") or [])
+                )
+        if t and is_in_match:
             holes_data = []
             for h in holes:
                 holes_data.append({
@@ -3317,6 +3331,357 @@ async def get_1v1_match(match_id: str, request: Request):
 
 
 # --- end 1v1 Quick Match ---
+
+
+# --- Match (2-8 players, single round, friendly) ---
+# Supports formats: stroke (1-8 players, low total wins), best_ball (2 teams of 2,
+# low best-ball-per-hole wins), match_play (exactly 2 players, hole-by-hole 1/0.5/0).
+# Match `players` is the source of truth: each entry has status pending/accepted/declined.
+# A match becomes 'active' as soon as 2+ have accepted.
+
+ALLOWED_MATCH_FORMATS = {"stroke", "best_ball", "match_play"}
+
+
+def _match_compute_result(t: dict, cards_by_user: dict) -> Optional[dict]:
+    """Compute winner once all accepted players have submitted, depending on format.
+    Returns dict like {format, winner_id?, winner_name?, winner_team?, summary?} or None
+    if not yet decidable."""
+    fmt = t.get("format", "stroke")
+    accepted = [p for p in (t.get("players") or []) if p.get("status") == "accepted"]
+    if len(accepted) < 2:
+        return None
+    # All accepted must have submitted scorecards
+    cards = []
+    for p in accepted:
+        c = cards_by_user.get(p["user_id"])
+        if not c or c.get("status") != "submitted":
+            return None
+        cards.append((p, c))
+
+    if fmt == "stroke":
+        cards.sort(key=lambda pc: pc[1].get("total_strokes", 9999))
+        best = cards[0][1].get("total_strokes")
+        winners = [pc for pc in cards if pc[1].get("total_strokes") == best]
+        if len(winners) > 1:
+            return {"format": "stroke", "winner_id": None,
+                    "winner_name": "Tie",
+                    "tied_user_ids": [pc[0]["user_id"] for pc in winners]}
+        return {"format": "stroke",
+                "winner_id": winners[0][0]["user_id"],
+                "winner_name": winners[0][0]["name"]}
+
+    if fmt == "match_play":
+        if len(cards) != 2:
+            return None
+        (p1, c1), (p2, c2) = cards
+        h1 = {h.get("hole"): h.get("strokes") for h in (c1.get("holes") or []) if h.get("strokes")}
+        h2 = {h.get("hole"): h.get("strokes") for h in (c2.get("holes") or []) if h.get("strokes")}
+        common = sorted(set(h1.keys()) & set(h2.keys()))
+        if not common:
+            return None
+        p1_pts = p2_pts = 0.0
+        for h in common:
+            if h1[h] < h2[h]: p1_pts += 1
+            elif h1[h] > h2[h]: p2_pts += 1
+            else: p1_pts += 0.5; p2_pts += 0.5
+        if p1_pts > p2_pts:
+            return {"format": "match_play", "winner_id": p1["user_id"], "winner_name": p1["name"],
+                    "score": f"{p1_pts}–{p2_pts}"}
+        if p2_pts > p1_pts:
+            return {"format": "match_play", "winner_id": p2["user_id"], "winner_name": p2["name"],
+                    "score": f"{p2_pts}–{p1_pts}"}
+        return {"format": "match_play", "winner_id": None, "winner_name": "Tie",
+                "score": f"{p1_pts}–{p2_pts}"}
+
+    if fmt == "best_ball":
+        teams = t.get("teams") or []
+        if len(teams) != 2:
+            return None
+        team_holes = {1: [], 2: []}  # team -> list of (hole, best_strokes)
+        for tm in teams:
+            tnum = tm.get("team")
+            team_cards = [c for p, c in cards if p["user_id"] in (tm.get("user_ids") or [])]
+            if not team_cards:
+                return None
+            holes_set = set()
+            for c in team_cards:
+                for h in (c.get("holes") or []):
+                    if h.get("strokes"):
+                        holes_set.add(h["hole"])
+            for hole in sorted(holes_set):
+                strokes_for_hole = [
+                    next((h["strokes"] for h in (c.get("holes") or []) if h.get("hole") == hole), None)
+                    for c in team_cards
+                ]
+                strokes_for_hole = [s for s in strokes_for_hole if s]
+                if strokes_for_hole:
+                    team_holes[tnum].append((hole, min(strokes_for_hole)))
+        common = sorted(set(h for h, _ in team_holes[1]) & set(h for h, _ in team_holes[2]))
+        if not common:
+            return None
+        t1_wins = t2_wins = 0
+        for hole in common:
+            s1 = next(s for h, s in team_holes[1] if h == hole)
+            s2 = next(s for h, s in team_holes[2] if h == hole)
+            if s1 < s2: t1_wins += 1
+            elif s2 < s1: t2_wins += 1
+        if t1_wins > t2_wins:
+            return {"format": "best_ball", "winner_team": 1, "winner_name": teams[0].get("name") or "Team 1",
+                    "score": f"{t1_wins}–{t2_wins}"}
+        if t2_wins > t1_wins:
+            return {"format": "best_ball", "winner_team": 2, "winner_name": teams[1].get("name") or "Team 2",
+                    "score": f"{t2_wins}–{t1_wins}"}
+        return {"format": "best_ball", "winner_team": None, "winner_name": "Tie",
+                "score": f"{t1_wins}–{t2_wins}"}
+
+    return None
+
+
+@api_router.post("/matches")
+async def create_match(request: Request):
+    """Create a 'Match' (single-round friendly game between 2-8 players).
+
+    Body: {
+      opponent_ids: [user_id, ...] (1-7 ids — creator is implicit),
+      course_id, tee_name?, num_holes (9|18),
+      format: 'stroke'|'best_ball'|'match_play',
+      teams?: [ {name?, user_ids: [uid, uid]}, {name?, user_ids: [uid, uid]} ]  # required for best_ball
+      name?
+    }
+    Creator is auto-accepted. Other invitees start as 'pending'.
+    """
+    user = await get_current_user(request)
+    body = await request.json()
+    opponent_ids = list(dict.fromkeys(body.get("opponent_ids") or []))
+    course_id = body.get("course_id")
+    tee_name = body.get("tee_name") or "Default"
+    num_holes = int(body.get("num_holes") or 18)
+    fmt = (body.get("format") or "stroke").lower()
+    teams_in = body.get("teams") or []
+
+    if not course_id or not opponent_ids:
+        raise HTTPException(status_code=400, detail="course_id and at least one opponent required")
+    if user["user_id"] in opponent_ids:
+        raise HTTPException(status_code=400, detail="Cannot invite yourself")
+    if fmt not in ALLOWED_MATCH_FORMATS:
+        raise HTTPException(status_code=400, detail=f"format must be one of {sorted(ALLOWED_MATCH_FORMATS)}")
+    total = 1 + len(opponent_ids)
+    if total < 2 or total > 8:
+        raise HTTPException(status_code=400, detail="Match must have 2-8 players")
+    if fmt == "match_play" and total != 2:
+        raise HTTPException(status_code=400, detail="match_play requires exactly 2 players")
+    if fmt == "best_ball":
+        if total != 4:
+            raise HTTPException(status_code=400, detail="best_ball requires exactly 4 players")
+        if len(teams_in) != 2:
+            raise HTTPException(status_code=400, detail="best_ball requires 2 teams")
+        team_uids = [tm.get("user_ids") or [] for tm in teams_in]
+        flat = [u for tm in team_uids for u in tm]
+        all_uids = [user["user_id"]] + opponent_ids
+        if sorted(flat) != sorted(all_uids):
+            raise HTTPException(status_code=400, detail="teams must include exactly the match players")
+        if any(len(tm) != 2 for tm in team_uids):
+            raise HTTPException(status_code=400, detail="best_ball teams must have 2 players each")
+
+    course = await db.golf_courses.find_one({"course_id": course_id}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    opps = await db.users.find(
+        {"user_id": {"$in": opponent_ids}},
+        {"_id": 0, "user_id": 1, "name": 1}
+    ).to_list(20)
+    by_id = {o["user_id"]: o for o in opps}
+    if any(uid not in by_id for uid in opponent_ids):
+        raise HTTPException(status_code=404, detail="One or more opponents not found")
+
+    now = datetime.now(timezone.utc).isoformat()
+    players = [{
+        "user_id": user["user_id"], "name": user["name"],
+        "status": "accepted", "joined_at": now,
+    }]
+    for uid in opponent_ids:
+        players.append({
+            "user_id": uid, "name": by_id[uid]["name"],
+            "status": "pending", "joined_at": None,
+        })
+
+    teams_doc = []
+    if fmt == "best_ball":
+        for i, tm in enumerate(teams_in):
+            teams_doc.append({
+                "team": i + 1,
+                "name": tm.get("name") or f"Team {i + 1}",
+                "user_ids": tm.get("user_ids") or [],
+            })
+
+    name = body.get("name") or (
+        f"{user['name']}'s Match" if total > 2 else f"{user['name']} vs {by_id[opponent_ids[0]]['name']}"
+    )
+    today = datetime.now(timezone.utc).date().isoformat()
+    tournament_id = f"tm_{uuid.uuid4().hex[:10]}"
+    t_doc = {
+        "tournament_id": tournament_id,
+        "name": name,
+        "course_id": course_id,
+        "course_name": course.get("course_name"),
+        "tee_name": tee_name,
+        "num_rounds": 1,
+        "num_holes": num_holes,
+        "scoring_format": "stroke",  # backend tournament default; match `format` controls scoring
+        "format": fmt,
+        "visibility": "private",
+        "status": "pending",   # becomes 'active' when 2+ accepted
+        "is_match": True,
+        "players": players,
+        "teams": teams_doc,
+        "participants": [{"user_id": user["user_id"], "name": user["name"], "joined_at": now}],
+        "start_date": today,
+        "end_date": today,
+        "created_by": user["user_id"],
+        "created_by_name": user["name"],
+        "created_at": now,
+    }
+    await db.tournaments.insert_one(t_doc)
+
+    # Notify each invited opponent
+    for uid in opponent_ids:
+        try:
+            await _create_notification(
+                uid, "match_invite",
+                f"🎯 {user['name']} invited you to a Match",
+                f"{fmt.replace('_', ' ').title()} · {course.get('course_name')} · {num_holes} holes",
+                link=f"/match/{tournament_id}",
+                meta={"match_id": tournament_id, "challenger_id": user["user_id"]},
+            )
+        except Exception:
+            pass
+
+    t_doc.pop("_id", None)
+    return t_doc
+
+
+@api_router.get("/matches/active")
+async def list_my_matches(request: Request):
+    """Active or pending Matches involving the current user (where they are accepted, pending, or creator)."""
+    user = await get_current_user(request)
+    docs = await db.tournaments.find({
+        "is_match": True,
+        "status": {"$in": ["pending", "active"]},
+        "players.user_id": user["user_id"],
+    }, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return docs
+
+
+@api_router.post("/matches/{match_id}/respond")
+async def respond_match(match_id: str, request: Request):
+    """A pending invitee accepts or declines. Body: { action: 'accept'|'decline' }
+    Match goes 'active' when at least 2 players (creator counts) are accepted.
+    Match goes 'cancelled' if every non-creator declines."""
+    user = await get_current_user(request)
+    body = await request.json()
+    action = (body.get("action") or "").lower()
+    if action not in ("accept", "decline"):
+        raise HTTPException(status_code=400, detail="action must be accept or decline")
+    t = await db.tournaments.find_one({"tournament_id": match_id, "is_match": True}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Match not found")
+    me = next((p for p in (t.get("players") or []) if p.get("user_id") == user["user_id"]), None)
+    if not me:
+        raise HTTPException(status_code=403, detail="Not invited to this match")
+    if me.get("status") != "pending":
+        raise HTTPException(status_code=400, detail=f"Already {me['status']}")
+    if t.get("status") not in ("pending", "active"):
+        raise HTTPException(status_code=400, detail="Match no longer open")
+
+    now = datetime.now(timezone.utc).isoformat()
+    new_status_for_player = "accepted" if action == "accept" else "declined"
+    players = list(t["players"])
+    parts = list(t.get("participants") or [])
+    for p in players:
+        if p["user_id"] == user["user_id"]:
+            p["status"] = new_status_for_player
+            p["joined_at"] = now if action == "accept" else None
+    if action == "accept" and not any(pa.get("user_id") == user["user_id"] for pa in parts):
+        parts.append({"user_id": user["user_id"], "name": user["name"], "joined_at": now})
+
+    accepted_count = sum(1 for p in players if p["status"] == "accepted")
+    pending_count = sum(1 for p in players if p["status"] == "pending")
+    creator_id = t.get("created_by")
+    creator_only_left = (accepted_count == 1 and pending_count == 0 and
+                         next((p for p in players if p["status"] == "accepted"), {}).get("user_id") == creator_id)
+
+    new_match_status = t.get("status")
+    if creator_only_left:
+        new_match_status = "cancelled"
+    elif accepted_count >= 2 and t.get("status") == "pending":
+        new_match_status = "active"
+
+    update = {"players": players, "participants": parts, "status": new_match_status}
+    if new_match_status == "active" and t.get("status") != "active":
+        update["accepted_at"] = now
+    if new_match_status == "cancelled":
+        update["cancelled_at"] = now
+
+    await db.tournaments.update_one({"tournament_id": match_id}, {"$set": update})
+
+    # Notify creator
+    try:
+        await _create_notification(
+            creator_id,
+            "match_accepted" if action == "accept" else "match_declined",
+            f"{user['name']} {'joined' if action == 'accept' else 'declined'} your Match",
+            f"{t.get('course_name', '')} · {t.get('num_holes', 18)} holes",
+            link=f"/match/{match_id}",
+            meta={"match_id": match_id, "responder_id": user["user_id"]},
+        )
+    except Exception:
+        pass
+    return {"ok": True, "status": new_match_status, "your_status": new_status_for_player}
+
+
+@api_router.get("/matches/{match_id}")
+async def get_match(match_id: str, request: Request):
+    """Match detail with scorecards for every accepted player."""
+    user = await get_current_user(request)
+    t = await db.tournaments.find_one({"tournament_id": match_id, "is_match": True}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Match not found")
+    if not any(p.get("user_id") == user["user_id"] for p in (t.get("players") or [])):
+        raise HTTPException(status_code=403, detail="Not in this match")
+
+    cards = await db.scorecards.find(
+        {"tournament_id": match_id, "round_number": 1},
+        {"_id": 0, "user_id": 1, "total_strokes": 1, "total_to_par": 1,
+         "completed_holes": 1, "status": 1, "player_name": 1, "holes": 1}
+    ).to_list(20)
+    cards_by_user = {c["user_id"]: c for c in cards}
+
+    # Attach card to each player
+    players_out = []
+    for p in (t.get("players") or []):
+        c = cards_by_user.get(p["user_id"])
+        # Don't ship raw holes back — slim payload
+        slim = None
+        if c:
+            slim = {k: c.get(k) for k in
+                    ("user_id", "player_name", "total_strokes", "total_to_par",
+                     "completed_holes", "status")}
+        players_out.append({**p, "card": slim})
+
+    result = _match_compute_result(t, cards_by_user)
+    if result and t.get("status") != "completed":
+        await db.tournaments.update_one(
+            {"tournament_id": match_id},
+            {"$set": {"status": "completed", "result": result,
+                      "completed_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        t["status"] = "completed"
+        t["result"] = result
+    return {**t, "players": players_out, "result": result or t.get("result")}
+
+
+# --- end Match (multi-player) ---
 
 
 @api_router.get("/profile/head-to-head/{other_user_id}")

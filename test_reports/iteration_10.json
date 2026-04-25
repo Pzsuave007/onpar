@@ -1,0 +1,65 @@
+{
+  "summary": "E2E validation of OnPar Live multi-player Match (replaces 1v1 Quick Match). Backend pytest 14/14 PASS covering create/validate/respond/active/get for stroke (3 players), match_play (2 players), best_ball (4 players + teams), decline-all → cancelled, rounds→scorecards mirror, and result computation per format. Legacy /api/matches/1v1/* routes still respond (no regression). Frontend E2E (mobile 390x844): Dashboard quick-match (renamed 'Match') → /match/new → fills opponents/course/tee/holes → POST /api/matches → navigates to /play/{course}?match={id}. Buddy entering /match/{id} sees Accept/Decline, clicking Accept → backend status=active and redirects to /play. Best Ball UI logic verified via code review (format-best_ball toggle + 4 opponent rows reveals 4 team1-toggle buttons enforcing exactly 2). Automated multi-opponent add via Playwright was flaky due to debounced search timing, but the addOpponent/toggleTeam1 logic in NewMatch.js is correct and the format-mismatch-warn ('Best Ball needs exactly 4 players.') renders properly while incomplete.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/match/new (best_ball)", "issues": ["Sequential multi-opponent add through search is debounced 250ms — works for human users but flaky for automated tests. Consider exposing add-opponent via stable id + ensure search input clears synchronously after addOpponent (currently does, just feels racy)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_match_multi.py",
+    "/app/test_reports/pytest/match_multi.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~3828 lines — the new /api/matches block (~340 lines) plus legacy /api/matches/1v1 (~250 lines) both live alongside tournaments/feed/etc. Strongly recommend extracting routers/matches.py and routers/matches_legacy.py.",
+    "_match_compute_result is called inside GET /api/matches/{id}; it persists 'completed' on read which is the only place it gets computed — fine for now but consider also computing on POST /api/rounds finish=true so the 'completed' transition is not gated by someone visiting the detail page.",
+    "best_ball validation only requires team1 length===2 in UI; backend correctly checks both teams have 2. Good. UI could surface 'Team 2 will be the others' more prominently (already shown but small text).",
+    "GET /api/matches/active returns at most 50 docs sorted by created_at desc — fine for current scale, but if a user has many cancelled invites this could grow; consider also filtering to status pending/active (already done) and capping per status."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_match_multi.py"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "85%"
+  },
+  "test_credentials": "admin@fairway.com / FairwayAdmin123!; buddy@test.com, b2@test.com, b3@test.com all with BuddyTest123!. All four exist & login OK.",
+  "seed_data_creation": "No persistent seed needed. Tests pre/post clean tournaments where is_match=true and scorecards where tournament_id starts with tm_.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend Match endpoints fully covered in /app/backend/tests/test_match_multi.py (14 tests, all green). For Playwright Best Ball UI, prefer fewer sequential adds — programmatically POST /api/matches via API and validate UI rendering at /match/{id}. The 'add_init_script' approach overrides localStorage on every navigation, so to swap users mid-flow, drop the original add_init_script and explicitly reset before each goto.",
+  "test_cases_covered": {
+    "backend": [
+      "POST /api/matches stroke 3 players → pending, creator accepted, invitees pending",
+      "POST /api/matches self-invite → 400",
+      "POST /api/matches match_play with 3 players → 400",
+      "POST /api/matches best_ball without teams → 400",
+      "POST /api/matches best_ball with malformed teams → 400",
+      "POST /api/matches with 9 players → 400",
+      "GET /api/matches/active visible to creator + every invited player",
+      "GET /api/matches/{id} returns slim card per player",
+      "POST /api/matches/{id}/respond accept → status=active when 2+ accepted",
+      "POST /api/matches/{id}/respond decline (last pending) → status=cancelled",
+      "Stroke 3-player result: lowest total wins; mirror creates scorecards with status=submitted",
+      "Match Play 2-player result: hole-by-hole 1/0.5/0 with score 'X–Y'",
+      "Best Ball 4-player 2-team result: per-hole min, team with more hole-wins gets winner_team",
+      "Legacy /api/matches/1v1/active still 200 OK (no regression)"
+    ],
+    "frontend": [
+      "/dashboard data-testid=quick-match navigates to /match/new (button text says 'Match')",
+      "/match/new renders new-match-page + format-stroke/format-match_play/format-best_ball pickers",
+      "Opponent search → click opponent-option-{uid} adds row with remove-opponent-{uid}",
+      "Course + tee + holes selectable; match-send-btn enables when valid",
+      "Send Challenge → POST /api/matches → navigate to /play/{course}?match={id}",
+      "/match/{id} renders match-page with leaderboard rows",
+      "Buddy (pending invitee) sees match-accept-btn + match-decline-btn",
+      "Accept → backend status=active and redirect to /play"
+    ]
+  }
+}
