@@ -46,6 +46,16 @@ Golf sporting app for tournaments with PGA-style public leaderboard. Easy admini
 - Bugfix shipped same day: routes were registered in App.js (were imported but missing <Route>) and a duplicate orphan code block at end of App.js (SyntaxError) was removed.
 - E2E validated: 8/8 backend pytest + 100% frontend flow (testing_agent_v3_fork iteration_9).
 
+### Phase 14 - Match (multi-player, replaces 1v1 in UI) (Apr 24, 2026)
+- Generalised the 1v1 to a multi-player Match (2-8 players, single round, friendly, NOT a tournament).
+- Three formats selectable: `stroke` (2-8 players, low total wins), `match_play` (exactly 2, hole-by-hole 1/0.5/0), `best_ball` (exactly 4 in 2 teams of 2, per-hole min comparison).
+- Match becomes `active` once 2+ players accept; goes `cancelled` if every non-creator declines.
+- Endpoints: POST /api/matches, GET /api/matches/active, GET /api/matches/{id}, POST /api/matches/{id}/respond.
+- Same `tournaments` collection with `is_match: true`, `players: [{user_id, name, status}]`, `teams` (for best_ball), `format`. Mirror to `scorecards` updated to support both is_1v1 and is_match (only mirrors when player.status=accepted).
+- Frontend pages: /match/new (NewMatch.js) + /match/:matchId (MatchDetail.js). Old NewMatch1v1.js/Match1v1Detail.js deleted. Dashboard button renamed from '1v1 Quick Match' to 'Match' (data-testid quick-match).
+- H2H stats automatically include stroke matches (no extra code needed — reuses existing tournament_id-keyed scorecard comparison in /api/profile/head-to-head/{other_user_id}).
+- Tested: 14/14 backend pytest + frontend E2E (testing_agent_v3_fork iteration_10). Legacy /api/matches/1v1/* endpoints kept for read-compat.
+
 ### Phase 6 - Landing Page
 - Redesigned landing page showcasing all features
 
