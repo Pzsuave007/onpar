@@ -124,14 +124,20 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
   const shot_bearing = bearingDeg(pos.lat, pos.lng, hole.green_lat, hole.green_lng);
   const suggestion = suggestClub(yards, clubs, { calibration, conditions, shot_bearing });
 
-  // Build the small "+5y altitude · -4y heat · -8y headwind" line shown under the pick.
+  // Show conditions detail only when something materially changes the shot:
+  //   • wind label (≥ 2y impact or any meaningful crosswind), or
+  //   • combined altitude+temp adjustment ≥ 5 yards.
   const breakdown = suggestion?.breakdown;
-  const breakdownLabel = breakdown
+  const altTempAbs = breakdown ? Math.abs((breakdown.altitude_y || 0) + (breakdown.temp_y || 0)) : 0;
+  const showHints = breakdown && (breakdown.wind_label || altTempAbs >= 5);
+  const breakdownLabel = showHints
     ? [
-        breakdown.altitude_y >= 2 ? `+${breakdown.altitude_y}y altitude`
-          : breakdown.altitude_y <= -2 ? `${breakdown.altitude_y}y altitude` : null,
-        breakdown.temp_y >= 2 ? `+${breakdown.temp_y}y heat`
-          : breakdown.temp_y <= -2 ? `${breakdown.temp_y}y cold` : null,
+        // Combine altitude + temp into one short hint when together they shift ≥5y.
+        altTempAbs >= 5
+          ? (breakdown.altitude_y + breakdown.temp_y > 0
+              ? `+${breakdown.altitude_y + breakdown.temp_y}y conditions`
+              : `${breakdown.altitude_y + breakdown.temp_y}y conditions`)
+          : null,
         breakdown.wind_label || null,
       ].filter(Boolean).join(' · ')
     : '';
@@ -152,11 +158,6 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
           data-testid={`caddie-${hole.hole}`}>
           <div className="text-xs text-[#6B6E66] uppercase tracking-wider font-bold mb-1 flex items-center justify-center gap-1">
             <span>🧢</span> Caddie says
-            {conditions?.altitude_ft != null && (
-              <span className="text-[9px] normal-case tracking-normal text-[#6B6E66] font-normal ml-1">
-                · today {conditions.altitude_ft}ft / {conditions.temp_f}°F
-              </span>
-            )}
           </div>
           {suggestion.mode === 'single' && (
             <div>
