@@ -52,11 +52,21 @@ else
 fi
 
 echo; echo "▸ [4/5] Restart backend via systemd (clean, no zombies)"
+# Clear systemd's failure rate-limit counter so a previously broken state
+# doesn't block a fresh start. Safe no-op if the service is healthy.
+systemctl reset-failed onpar-backend 2>/dev/null || true
+# Truncate the Python log so any traceback we dump on failure is only from THIS attempt.
+: > /opt/onpar/backend/backend.log 2>/dev/null || true
 systemctl restart onpar-backend
-sleep 3
+sleep 4
 if ! systemctl is-active --quiet onpar-backend; then
-  echo "✗ onpar-backend failed to restart. Last 30 log lines:"
-  journalctl -u onpar-backend --no-pager -n 30
+  echo "✗ onpar-backend failed to restart."
+  echo
+  echo "------ Python error (from /opt/onpar/backend/backend.log) ------"
+  tail -40 /opt/onpar/backend/backend.log 2>/dev/null || echo "(log empty)"
+  echo "------ end ------"
+  echo
+  echo "  Send the lines above to the agent."
   exit 1
 fi
 echo "✓ Backend restarted (PID: $(systemctl show --property MainPID --value onpar-backend))"
