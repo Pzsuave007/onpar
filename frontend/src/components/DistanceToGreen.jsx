@@ -21,6 +21,16 @@ function distanceMeters(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+// Initial compass bearing (degrees) from point 1 toward point 2.
+function bearingDeg(lat1, lng1, lat2, lng2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const φ1 = toRad(lat1), φ2 = toRad(lat2);
+  const Δλ = toRad(lng2 - lng1);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
 export default function DistanceToGreen({ courseId, hole, onPinned }) {
   const [pos, setPos] = useState(null);
   const [error, setError] = useState(null);
@@ -111,18 +121,20 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
 
   const meters = distanceMeters(pos.lat, pos.lng, hole.green_lat, hole.green_lng);
   const yards = Math.round(meters * 1.09361);
-  const suggestion = suggestClub(yards, clubs, { calibration, conditions });
+  const shot_bearing = bearingDeg(pos.lat, pos.lng, hole.green_lat, hole.green_lng);
+  const suggestion = suggestClub(yards, clubs, { calibration, conditions, shot_bearing });
 
-  // Build the small "+5y altitude · -4y heat" line shown under the pick.
+  // Build the small "+5y altitude · -4y heat · -8y headwind" line shown under the pick.
   const breakdown = suggestion?.breakdown;
-  const breakdownLabel = breakdown && (Math.abs(breakdown.altitude_y) >= 2 || Math.abs(breakdown.temp_y) >= 2)
+  const breakdownLabel = breakdown
     ? [
         breakdown.altitude_y >= 2 ? `+${breakdown.altitude_y}y altitude`
           : breakdown.altitude_y <= -2 ? `${breakdown.altitude_y}y altitude` : null,
         breakdown.temp_y >= 2 ? `+${breakdown.temp_y}y heat`
           : breakdown.temp_y <= -2 ? `${breakdown.temp_y}y cold` : null,
+        breakdown.wind_label || null,
       ].filter(Boolean).join(' · ')
-    : null;
+    : '';
 
   return (
     <div className="space-y-1.5">
