@@ -125,7 +125,11 @@ export default function LiveScorer() {
       }
     }
     setHoles(baseHoles);
-    setCurrentHoleIndex(0);
+    // Jump to the first hole WITHOUT a score (so we don't accidentally
+    // overwrite hole 1 every time we switch players). If every hole already
+    // has a score, stay on the last one.
+    const firstEmpty = baseHoles.findIndex(h => !h.strokes);
+    setCurrentHoleIndex(firstEmpty === -1 ? baseHoles.length - 1 : firstEmpty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlayer, roundNumber]);
 
@@ -157,6 +161,11 @@ export default function LiveScorer() {
       });
       setDirtyPlayers(prev => { const n = {...prev}; delete n[selectedPlayer]; return n; });
       toast.success(`Score saved for ${roster.find(r => r.user_id === selectedPlayer)?.player_name}`);
+      // Auto-advance: if the hole we just saved has a score and there's a
+      // next hole, jump to it. Saves a tap during a tournament round.
+      if (holes[currentHoleIndex]?.strokes > 0 && currentHoleIndex < holes.length - 1) {
+        setCurrentHoleIndex(currentHoleIndex + 1);
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to save');
     } finally {
