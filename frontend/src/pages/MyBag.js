@@ -162,16 +162,17 @@ export default function MyBag() {
             🧢 Caddie Calibration
           </CardTitle>
           <p className="text-[11px] text-[#6B6E66]">
-            Where did you measure these distances? The Caddie subtracts your home conditions
-            and re-applies the conditions of wherever you're playing today.
+            <b>Today's altitude and temperature always come from the course you're playing</b>{' '}
+            (live, from weather + GPS). These two values just describe where you measured your
+            normal distances, so the Caddie knows your baseline.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
-            <Label className="text-xs text-[#6B6E66]">Home course (auto-fills altitude)</Label>
+            <Label className="text-xs text-[#6B6E66]">Course where you measured (optional)</Label>
             <Select value={homeCourseId} onValueChange={pickHomeCourse}>
               <SelectTrigger className="mt-1 border-[#E2E3DD]" data-testid="home-course-select">
-                <SelectValue placeholder="Pick your usual course" />
+                <SelectValue placeholder="Pick your usual course (auto-fills altitude)" />
               </SelectTrigger>
               <SelectContent>
                 {courses.map(c => (
@@ -185,7 +186,7 @@ export default function MyBag() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs text-[#6B6E66] flex items-center gap-1">
-                <MountainSnow className="h-3 w-3" /> Altitude (ft)
+                <MountainSnow className="h-3 w-3" /> Altitude when measured (ft)
               </Label>
               <Input type="number" inputMode="numeric"
                 value={calibration.altitude_ft ?? 0}
@@ -196,7 +197,7 @@ export default function MyBag() {
             </div>
             <div>
               <Label className="text-xs text-[#6B6E66] flex items-center gap-1">
-                <Thermometer className="h-3 w-3" /> Avg temp (°F)
+                <Thermometer className="h-3 w-3" /> Avg temp when measured (°F)
               </Label>
               <Input type="number" inputMode="numeric"
                 value={calibration.temp_f ?? 70}
@@ -207,7 +208,7 @@ export default function MyBag() {
             </div>
           </div>
           <p className="text-[10px] text-[#6B6E66]">
-            Defaults (sea level / 70°F) work fine if you measured in mild conditions.
+            Sea level / 70°F defaults are fine if you measured on a mild day at low elevation.
           </p>
         </CardContent>
       </Card>

@@ -140,6 +140,11 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
           data-testid={`caddie-${hole.hole}`}>
           <div className="text-xs text-[#6B6E66] uppercase tracking-wider font-bold mb-1 flex items-center justify-center gap-1">
             <span>🧢</span> Caddie says
+            {conditions?.altitude_ft != null && (
+              <span className="text-[9px] normal-case tracking-normal text-[#6B6E66] font-normal ml-1">
+                · today {conditions.altitude_ft}ft / {conditions.temp_f}°F
+              </span>
+            )}
           </div>
           {suggestion.mode === 'single' && (
             <div>
