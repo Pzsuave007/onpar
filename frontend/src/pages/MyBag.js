@@ -1,4 +1,5 @@
-// "My Bag" page — personal club distances, fully personalizable.
+// "My Bag" page — personal club distances + Caddie calibration so club
+// suggestions on /play adjust for current altitude and temperature.
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/contexts/AuthContext';
@@ -7,11 +8,16 @@ import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Minus, Plus, Trash2, ArrowLeft, Save, GripVertical } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Minus, Plus, Trash2, ArrowLeft, Save, GripVertical, MountainSnow, Thermometer } from 'lucide-react';
 
 export default function MyBag() {
   const navigate = useNavigate();
   const [clubs, setClubs] = useState([]);
+  const [calibration, setCalibration] = useState({ altitude_ft: 0, temp_f: 70 });
+  const [homeCourseId, setHomeCourseId] = useState('');
+  const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -19,8 +25,14 @@ export default function MyBag() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await axios.get(`${API}/profile/clubs`);
-        setClubs(r.data.clubs || []);
+        const [clubsRes, coursesRes] = await Promise.all([
+          axios.get(`${API}/profile/clubs`),
+          axios.get(`${API}/courses`),
+        ]);
+        setClubs(clubsRes.data.clubs || []);
+        if (clubsRes.data.bag_calibration) setCalibration(clubsRes.data.bag_calibration);
+        if (clubsRes.data.home_course_id) setHomeCourseId(clubsRes.data.home_course_id);
+        setCourses(coursesRes.data || []);
       } catch {
         toast.error('Failed to load your bag');
       } finally {
@@ -40,12 +52,10 @@ export default function MyBag() {
     setClubs(cs => cs.filter((_, idx) => idx !== i));
     setDirty(true);
   };
-
   const addClub = () => {
     setClubs(cs => [...cs, { name: '', distance_yards: 0 }]);
     setDirty(true);
   };
-
   const moveClub = (from, to) => {
     if (to < 0 || to >= clubs.length) return;
     setClubs(cs => {
@@ -54,6 +64,40 @@ export default function MyBag() {
       next.splice(to, 0, x);
       return next;
     });
+    setDirty(true);
+  };
+
+  // When user picks a home course we offer to auto-fill calibration altitude
+  // from Open-Meteo (the same source the Caddie uses on the course).
+  const pickHomeCourse = async (courseId) => {
+    setHomeCourseId(courseId);
+    setDirty(true);
+    if (!courseId) return;
+    const c = courses.find(x => x.course_id === courseId);
+    const lat = c?.holes?.[0]?.green_lat || c?.tees?.[0]?.holes?.[0]?.green_lat;
+    const lng = c?.holes?.[0]?.green_lng || c?.tees?.[0]?.holes?.[0]?.green_lng;
+    if (!lat || !lng) {
+      toast.message('Set the altitude manually — this course has no GPS yet.');
+      return;
+    }
+    try {
+      const r = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
+        `&current=temperature_2m&temperature_unit=fahrenheit`
+      );
+      const j = await r.json();
+      if (j?.elevation != null) {
+        const ft = Math.round(j.elevation * 3.281);
+        setCalibration(cal => ({ ...cal, altitude_ft: ft }));
+        toast.success(`Calibrated to ${c.course_name}: ${ft} ft`);
+      }
+    } catch {
+      toast.message('Could not auto-detect altitude.');
+    }
+  };
+
+  const setCal = (patch) => {
+    setCalibration(c => ({ ...c, ...patch }));
     setDirty(true);
   };
 
@@ -67,8 +111,16 @@ export default function MyBag() {
     }
     setSaving(true);
     try {
-      const r = await axios.put(`${API}/profile/clubs`, { clubs: cleaned });
+      const r = await axios.put(`${API}/profile/clubs`, {
+        clubs: cleaned,
+        bag_calibration: {
+          altitude_ft: Number(calibration.altitude_ft) || 0,
+          temp_f: Number(calibration.temp_f) || 70,
+        },
+        home_course_id: homeCourseId || '',
+      });
       setClubs(r.data.clubs);
+      if (r.data.bag_calibration) setCalibration(r.data.bag_calibration);
       setDirty(false);
       toast.success('✓ Bag saved');
     } catch (e) {
@@ -97,11 +149,70 @@ export default function MyBag() {
             🏌️ My Bag
           </CardTitle>
           <p className="text-xs text-[#6B6E66]">
-            Average yardage with each club. During a round we'll suggest the right club next to the distance-to-green.
+            Average yardage with each club. The Caddie on /play adjusts these for altitude + temperature
+            so you get a realistic suggestion at any course.
           </p>
         </CardHeader>
       </Card>
 
+      {/* Caddie Calibration */}
+      <Card className="border-[#E2E3DD] shadow-none mb-4" data-testid="caddie-calibration-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-bold text-[#1B3C35] uppercase tracking-wider flex items-center gap-2">
+            🧢 Caddie Calibration
+          </CardTitle>
+          <p className="text-[11px] text-[#6B6E66]">
+            Where did you measure these distances? The Caddie subtracts your home conditions
+            and re-applies the conditions of wherever you're playing today.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <Label className="text-xs text-[#6B6E66]">Home course (auto-fills altitude)</Label>
+            <Select value={homeCourseId} onValueChange={pickHomeCourse}>
+              <SelectTrigger className="mt-1 border-[#E2E3DD]" data-testid="home-course-select">
+                <SelectValue placeholder="Pick your usual course" />
+              </SelectTrigger>
+              <SelectContent>
+                {courses.map(c => (
+                  <SelectItem key={c.course_id} value={c.course_id}>
+                    {c.course_name || c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-[#6B6E66] flex items-center gap-1">
+                <MountainSnow className="h-3 w-3" /> Altitude (ft)
+              </Label>
+              <Input type="number" inputMode="numeric"
+                value={calibration.altitude_ft ?? 0}
+                onChange={e => setCal({ altitude_ft: parseInt(e.target.value || '0', 10) })}
+                className="mt-1 h-10 text-center text-base font-bold text-[#1B3C35] tabular-nums border-[#E2E3DD]"
+                data-testid="calibration-altitude-input"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-[#6B6E66] flex items-center gap-1">
+                <Thermometer className="h-3 w-3" /> Avg temp (°F)
+              </Label>
+              <Input type="number" inputMode="numeric"
+                value={calibration.temp_f ?? 70}
+                onChange={e => setCal({ temp_f: parseInt(e.target.value || '70', 10) })}
+                className="mt-1 h-10 text-center text-base font-bold text-[#1B3C35] tabular-nums border-[#E2E3DD]"
+                data-testid="calibration-temp-input"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-[#6B6E66]">
+            Defaults (sea level / 70°F) work fine if you measured in mild conditions.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Clubs list */}
       <Card className="border-[#E2E3DD] shadow-none">
         <CardContent className="p-2">
           <div className="divide-y divide-[#E2E3DD]">

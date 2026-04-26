@@ -1337,19 +1337,30 @@ DEFAULT_CLUBS = [
 
 @api_router.get("/profile/clubs")
 async def get_my_clubs(request: Request):
-    """Return the current user's personal club distances (My Bag).
-    First-time users get the DEFAULT_CLUBS as a seed."""
+    """Return the current user's personal club distances (My Bag) plus
+    the bag-calibration metadata used by the Caddie to adjust suggestions
+    for altitude and temperature. First-time users get DEFAULT_CLUBS."""
     user = await get_current_user(request)
-    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "clubs": 1})
-    clubs = (u or {}).get("clubs")
+    u = await db.users.find_one(
+        {"user_id": user["user_id"]},
+        {"_id": 0, "clubs": 1, "bag_calibration": 1, "home_course_id": 1}
+    ) or {}
+    clubs = u.get("clubs")
+    calibration = u.get("bag_calibration") or {"altitude_ft": 0, "temp_f": 70}
+    home_course_id = u.get("home_course_id")
     if not clubs:
-        return {"clubs": DEFAULT_CLUBS, "seeded": True}
-    return {"clubs": clubs, "seeded": False}
+        return {"clubs": DEFAULT_CLUBS, "seeded": True,
+                "bag_calibration": calibration, "home_course_id": home_course_id}
+    return {"clubs": clubs, "seeded": False,
+            "bag_calibration": calibration, "home_course_id": home_course_id}
 
 
 @api_router.put("/profile/clubs")
 async def update_my_clubs(request: Request):
-    """Replace the current user's club list entirely."""
+    """Replace the current user's club list and (optionally) their bag
+    calibration / home course. Sending only `clubs` keeps the existing
+    calibration. Body: {clubs, bag_calibration?: {altitude_ft, temp_f},
+    home_course_id?}"""
     user = await get_current_user(request)
     body = await request.json()
     raw = body.get("clubs") or []
@@ -1369,11 +1380,42 @@ async def update_my_clubs(request: Request):
         if dist < 0 or dist > 400:
             continue
         cleaned.append({"name": name, "distance_yards": dist})
-    await db.users.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": {"clubs": cleaned, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    return {"clubs": cleaned}
+
+    update = {"clubs": cleaned, "updated_at": datetime.now(timezone.utc).isoformat()}
+
+    # Optional: home course (auto-fills calibration altitude/temp from course
+    # elevation, if the course has one stored).
+    home_course_id = body.get("home_course_id")
+    if home_course_id is not None:
+        if home_course_id == "":
+            update["home_course_id"] = None
+        else:
+            course = await db.golf_courses.find_one(
+                {"course_id": home_course_id}, {"_id": 0, "course_id": 1, "elevation_ft": 1}
+            )
+            if not course:
+                raise HTTPException(status_code=404, detail="home_course not found")
+            update["home_course_id"] = home_course_id
+
+    # Optional: explicit bag calibration. We accept either altitude_ft or temp_f.
+    cal_in = body.get("bag_calibration")
+    if cal_in is not None:
+        try:
+            alt = int(cal_in.get("altitude_ft") if cal_in.get("altitude_ft") is not None else 0)
+            temp = int(cal_in.get("temp_f") if cal_in.get("temp_f") is not None else 70)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="bag_calibration must be numeric")
+        # Sane guards: -1000ft (Death Valley) to 15000ft, -30°F to 130°F
+        alt = max(-1000, min(15000, alt))
+        temp = max(-30, min(130, temp))
+        update["bag_calibration"] = {"altitude_ft": alt, "temp_f": temp}
+
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
+    return {
+        "clubs": cleaned,
+        "bag_calibration": update.get("bag_calibration"),
+        "home_course_id": update.get("home_course_id"),
+    }
 
 
 @api_router.post("/profile/avatar")
