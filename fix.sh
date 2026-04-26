@@ -78,22 +78,43 @@ fi
 
 # ----------------------------------------------------------------- [4/6] ---
 section "[4/6] Kill any orphan OnPar uvicorn (safe — only /opt/onpar/)"
-# Other apps (espresso-beso, gradeprophet, etc.) are NEVER touched: we filter
-# by reading /proc/<pid>/cmdline and only killing PIDs whose command line
-# references /opt/onpar/.
+# Other apps (espresso-beso, gradeprophet, etc.) are NEVER touched: every
+# candidate PID is verified by reading /proc/<pid>/cmdline and only killed
+# if it references /opt/onpar/.
+declare -A SEEN
 ORPHANS=()
-for pid in $(pgrep -f "uvicorn.*server:app" 2>/dev/null || true); do
+add_pid() {
+  local pid="$1"
+  [ -z "$pid" ] && return
+  [ -n "${SEEN[$pid]:-}" ] && return
   if grep -q "/opt/onpar/" "/proc/$pid/cmdline" 2>/dev/null; then
+    SEEN[$pid]=1
     ORPHANS+=("$pid")
   fi
+}
+# 4a. uvicorn launcher / worker processes by command line
+for pid in $(pgrep -f "uvicorn.*server:app" 2>/dev/null || true); do
+  add_pid "$pid"
+done
+# 4b. ANY process holding port 8005 (workers often appear as plain `python3`)
+for pid in $(ss -tlnp 2>/dev/null | awk -v p=":${PORT}\$" '$4 ~ p {print $0}' \
+              | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u); do
+  add_pid "$pid"
 done
 if [ ${#ORPHANS[@]} -eq 0 ]; then
   echo "✓ No OnPar orphans"
 else
   echo "  killing OnPar orphans: ${ORPHANS[*]}"
   for pid in "${ORPHANS[@]}"; do kill -9 "$pid" 2>/dev/null || true; done
-  sleep 1
-  echo "✓ Cleared"
+  sleep 2
+  # Confirm port is free now
+  STILL=$(ss -tlnp 2>/dev/null | grep ":${PORT} " || true)
+  if [ -n "$STILL" ]; then
+    echo "  ⚠ port $PORT STILL held by:"
+    echo "    $STILL"
+  else
+    echo "✓ Port $PORT free"
+  fi
 fi
 
 # ----------------------------------------------------------------- [5/6] ---
