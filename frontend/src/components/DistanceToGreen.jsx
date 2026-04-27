@@ -200,19 +200,34 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
               )}
             </div>
           )}
-          {suggestion.mode === 'forced' && (
-            <div>
-              <span className="text-3xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
-                {suggestion.pick.name}
-              </span>
-              <div className="text-sm text-[#6B6E66] mt-0.5">
-                Out of range · {suggestion.pick.effective_yards}y max
+          {suggestion.mode === 'forced' && (() => {
+            // Two flavours of "forced":
+            //   1. target > longest club  → just show the longest club, no scolding.
+            //      A par-5 tee shot at 450y is not "out of range", it's a tee shot.
+            //   2. target < shortest club → suggest the shortest + "choke down".
+            const sortedByDist = [...(suggestion.pick ? clubs : [])].sort(
+              (a, b) => Number(b.distance_yards) - Number(a.distance_yards)
+            );
+            const isLongest = sortedByDist[0]?.name === suggestion.pick.name;
+            const isShortest = sortedByDist[sortedByDist.length - 1]?.name === suggestion.pick.name;
+            return (
+              <div>
+                <span className="text-3xl font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>
+                  {suggestion.pick.name}
+                </span>
+                <div className="text-sm text-[#6B6E66] mt-0.5">
+                  {isLongest && yards > suggestion.pick.effective_yards
+                    ? `plays ${suggestion.pick.effective_yards}y`
+                    : isShortest && yards < suggestion.pick.effective_yards
+                      ? `choke down · plays ${suggestion.pick.effective_yards}y full`
+                      : `plays ${suggestion.pick.effective_yards}y`}
+                </div>
+                {breakdownLabel && (
+                  <div className="text-[10px] text-[#6B6E66] mt-0.5">{breakdownLabel}</div>
+                )}
               </div>
-              {breakdownLabel && (
-                <div className="text-[10px] text-[#6B6E66] mt-0.5">{breakdownLabel}</div>
-              )}
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
       {!suggestion && clubs.length === 0 && (
