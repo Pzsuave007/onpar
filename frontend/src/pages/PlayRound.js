@@ -12,6 +12,7 @@ import PhotoShareSheet from '@/components/PhotoShareSheet';
 import DistanceToGreen from '@/components/DistanceToGreen';
 import WeatherCard from '@/components/WeatherCard';
 import { celebrateScore } from '@/lib/celebrations';
+import { computePace } from '@/lib/goalCoach';
 
 const TEE_COLORS = {
   black: 'bg-gray-900 text-white',
@@ -43,6 +44,12 @@ export default function PlayRound() {
   const [birdieAlerts, setBirdieAlerts] = useState([]);
   const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
   const [showFullCard, setShowFullCard] = useState(false);
+  const [activeGoal, setActiveGoal] = useState(null);
+
+  // Fetch active goal once — used by the pace banner during the round.
+  useEffect(() => {
+    axios.get(`${API}/profile/goal`).then(r => setActiveGoal(r.data?.active)).catch(() => {});
+  }, []);
   const [showPhotoShare, setShowPhotoShare] = useState(false);
   const [resumeRound, setResumeRound] = useState(null);   // in-progress round prompt
   const [resumed, setResumed] = useState(false);          // prevents re-prompting
@@ -503,6 +510,31 @@ export default function PlayRound() {
         return (
           <div className="mb-3">
             <WeatherCard lat={pinnedHole.green_lat} lng={pinnedHole.green_lng} />
+          </div>
+        );
+      })()}
+
+      {/* Goal pace banner — appears once at least 1 hole has a score */}
+      {activeGoal?.target_score && (() => {
+        const pace = computePace(activeGoal.target_score, holes);
+        if (!pace) return null;
+        const palette = {
+          'ahead':       'bg-[#4A5D23]/10 border-[#4A5D23]/40 text-[#4A5D23]',
+          'on-pace':     'bg-[#1B3C35]/5 border-[#1B3C35]/30 text-[#1B3C35]',
+          'behind':      'bg-[#C96A52]/10 border-[#C96A52]/30 text-[#C96A52]',
+          'way-behind':  'bg-[#C96A52]/20 border-[#C96A52]/50 text-[#C96A52]',
+          'unreachable': 'bg-[#6B6E66]/10 border-[#6B6E66]/30 text-[#6B6E66]',
+        };
+        return (
+          <div className={`mb-3 py-2 px-3 rounded-lg border ${palette[pace.status]}`}
+            data-testid="goal-pace-banner">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] uppercase tracking-wider font-bold opacity-75">
+                🎯 Break {activeGoal.target_score} · thru {pace.holes_played}/18
+              </span>
+              <span className="text-xs font-bold tabular-nums">{pace.label}</span>
+            </div>
+            <p className="text-[11px] opacity-85 mt-0.5">{pace.caption}</p>
           </div>
         );
       })()}

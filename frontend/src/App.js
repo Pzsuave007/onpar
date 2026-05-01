@@ -28,6 +28,7 @@ import CourseSearch from '@/pages/CourseSearch';
 import MyBag from '@/pages/MyBag';
 import NewMatch from '@/pages/NewMatch';
 import MatchDetail from '@/pages/MatchDetail';
+import MyGoals from '@/pages/MyGoals';
 import '@/App.css';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -87,6 +88,7 @@ function AppRouter() {
         <Route path="/player/:userId" element={<PlayerProfile />} />
         <Route path="/match/new" element={<ProtectedRoute><NewMatch /></ProtectedRoute>} />
         <Route path="/match/:matchId" element={<ProtectedRoute><MatchDetail /></ProtectedRoute>} />
+        <Route path="/my-goals" element={<ProtectedRoute><MyGoals /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

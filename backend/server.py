@@ -1499,6 +1499,140 @@ async def get_my_stats(request: Request):
         "challenges": challenges
     }
 
+
+# --- Player Goals (Break 100/90/80/70/custom) -------------------------------
+# Lightweight coaching layer on top of rounds:
+#   * active_goal on the user document drives pace-tracking in /play and the
+#     Player Dashboard "My Goal" card.
+#   * Milestones are derived on the fly from the user's rounds so we don't
+#     have to maintain a separate history collection.
+
+DEFAULT_PAR_BASELINE = 72
+
+
+@api_router.get("/profile/goal")
+async def get_my_goal(request: Request):
+    """Return the user's active goal + progress derived from rounds/scorecards."""
+    user = await get_current_user(request)
+    uid = user["user_id"]
+    u = await db.users.find_one({"user_id": uid}, {"_id": 0, "active_goal": 1}) or {}
+    active = u.get("active_goal")
+
+    # Gather all completed rounds + scorecards (total_strokes is what matters).
+    rounds = await db.rounds.find(
+        {"user_id": uid, "status": "completed"},
+        {"_id": 0, "total_strokes": 1, "total_to_par": 1, "course_name": 1, "created_at": 1, "round_id": 1}
+    ).sort("created_at", -1).to_list(500)
+    scorecards = await db.scorecards.find(
+        {"user_id": uid, "status": "submitted"},
+        {"_id": 0, "total_strokes": 1, "total_to_par": 1, "created_at": 1, "tournament_id": 1}
+    ).sort("created_at", -1).to_list(500)
+
+    # Only count 18-hole rounds for milestone purposes (partial rounds misleading).
+    completed = []
+    for r in rounds:
+        if r.get("total_strokes"):
+            completed.append({
+                "strokes": r["total_strokes"], "to_par": r.get("total_to_par") or 0,
+                "date": r.get("created_at"), "label": r.get("course_name") or "Round"
+            })
+    for sc in scorecards:
+        if sc.get("total_strokes"):
+            completed.append({
+                "strokes": sc["total_strokes"], "to_par": sc.get("total_to_par") or 0,
+                "date": sc.get("created_at"), "label": "Tournament"
+            })
+
+    # Canonical milestones — auto-unlocked whenever the user ever shot below each.
+    MILESTONES = [100, 95, 90, 85, 80, 75, 72]
+    broken = {}
+    for m in MILESTONES:
+        hits = [c for c in completed if c["strokes"] and c["strokes"] < m]
+        broken[str(m)] = {
+            "target": m,
+            "broken": len(hits) > 0,
+            "times": len(hits),
+            "first_at": hits[-1]["date"] if hits else None,  # reverse-sorted → last is earliest
+            "best": min((c["strokes"] for c in hits), default=None),
+        }
+
+    # Monthly best score (last 12 months) for the dashboard chart.
+    from collections import defaultdict
+    by_month = defaultdict(list)
+    for c in completed:
+        d = c.get("date") or ""
+        if len(d) >= 7:  # YYYY-MM
+            by_month[d[:7]].append(c["strokes"])
+    monthly = [
+        {"month": m, "best": min(ss), "avg": round(sum(ss) / len(ss), 1), "rounds": len(ss)}
+        for m, ss in sorted(by_month.items())
+    ][-12:]
+
+    # Progress vs active goal
+    progress = None
+    if active and active.get("target_score"):
+        target = active["target_score"]
+        hits = [c for c in completed if c["strokes"] and c["strokes"] < target]
+        recent_misses = [c for c in completed if c["strokes"] and c["strokes"] >= target][:5]
+        progress = {
+            "target": target,
+            "par_baseline": active.get("par_baseline", DEFAULT_PAR_BASELINE),
+            "set_at": active.get("set_at"),
+            "broken_count": len(hits),
+            "best_since_set": min(
+                (c["strokes"] for c in completed
+                 if c.get("date") and active.get("set_at") and c["date"] >= active["set_at"]
+                 and c["strokes"]),
+                default=None,
+            ),
+            "rounds_since_set": sum(
+                1 for c in completed
+                if c.get("date") and active.get("set_at") and c["date"] >= active["set_at"]
+            ),
+            "recent_misses": recent_misses,
+        }
+
+    return {
+        "active": active,
+        "progress": progress,
+        "milestones": broken,
+        "monthly": monthly,
+        "total_completed_rounds": len(completed),
+    }
+
+
+@api_router.put("/profile/goal")
+async def set_my_goal(request: Request):
+    """Set / update the active goal.  Body: {target_score, par_baseline?}"""
+    user = await get_current_user(request)
+    body = await request.json()
+    try:
+        target = int(body.get("target_score"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="target_score must be a number")
+    if target < 50 or target > 200:
+        raise HTTPException(status_code=400, detail="target_score out of reasonable range")
+    try:
+        par_baseline = int(body.get("par_baseline") or DEFAULT_PAR_BASELINE)
+    except (TypeError, ValueError):
+        par_baseline = DEFAULT_PAR_BASELINE
+    par_baseline = max(54, min(80, par_baseline))
+
+    doc = {
+        "target_score": target,
+        "par_baseline": par_baseline,
+        "set_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"active_goal": doc}})
+    return {"active_goal": doc}
+
+
+@api_router.delete("/profile/goal")
+async def clear_my_goal(request: Request):
+    user = await get_current_user(request)
+    await db.users.update_one({"user_id": user["user_id"]}, {"$unset": {"active_goal": ""}})
+    return {"cleared": True}
+
 # --- Player Profile (Public) ---
 @api_router.get("/players/{user_id}/profile")
 async def get_player_profile(user_id: str):

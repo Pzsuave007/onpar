@@ -140,6 +140,9 @@ export default function PlayerDashboard() {
         </Link>
       </div>
 
+      {/* My Goal */}
+      <GoalCard />
+
       {/* Stats Grid */}
       {stats && (
         <div className="grid grid-cols-4 gap-2 mb-5">
@@ -313,5 +316,44 @@ export default function PlayerDashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+// GoalCard — shown on the dashboard. If no goal yet, invites the user to set one.
+function GoalCard() {
+  const [goal, setGoal] = useState(null);
+  useEffect(() => {
+    axios.get(`${API}/profile/goal`).then(r => setGoal(r.data)).catch(() => {});
+  }, []);
+  const active = goal?.active;
+  const progress = goal?.progress;
+  return (
+    <Link to="/my-goals" data-testid="goal-card">
+      <div className="bg-gradient-to-r from-[#4A5D23] to-[#1B3C35] rounded-xl p-4 text-white active:scale-[0.98] transition-transform flex items-center gap-3 mb-5">
+        <Target className="h-6 w-6 text-[#F4E9D8] shrink-0" />
+        <div className="flex-1 min-w-0">
+          {active ? (
+            <>
+              <p className="text-sm font-bold flex items-center gap-2">
+                My Goal · Break {active.target_score}
+              </p>
+              <p className="text-[10px] text-white/70 mt-0.5">
+                {progress
+                  ? `Broken ${progress.broken_count}× · best since set: ${progress.best_since_set ?? '–'}`
+                  : 'Set your training target'}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-bold">Set a goal — Break 90?</p>
+              <p className="text-[10px] text-white/70 mt-0.5">
+                Let the Caddie coach you hole-by-hole
+              </p>
+            </>
+          )}
+        </div>
+        <ChevronRight className="h-4 w-4 text-white/70" />
+      </div>
+    </Link>
   );
 }
