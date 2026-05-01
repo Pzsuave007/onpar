@@ -1,6 +1,6 @@
 // Crowd-sourced GPS yardage to green + Caddie club suggestion from the user's bag.
 // - If hole has pinned coords → show live distance using navigator.geolocation
-//   AND a Caddie suggestion adjusted for current altitude + temperature.
+//   AND a Caddie suggestion adjusted for current altitude + temperature + goal pace.
 // - If not → show "Pin Green" button (when player is standing on the green).
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Flag, Crosshair } from 'lucide-react';
 import { suggestClub } from '@/lib/clubSuggestion';
 import { fetchConditions } from '@/lib/conditions';
+import { computePace } from '@/lib/goalCoach';
 
 // Haversine distance in meters
 function distanceMeters(lat1, lng1, lat2, lng2) {
@@ -31,24 +32,28 @@ function bearingDeg(lat1, lng1, lat2, lng2) {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-export default function DistanceToGreen({ courseId, hole, onPinned }) {
+export default function DistanceToGreen({ courseId, hole, onPinned, allHoles }) {
   const [pos, setPos] = useState(null);
   const [error, setError] = useState(null);
   const [pinning, setPinning] = useState(false);
   const [clubs, setClubs] = useState([]);
   const [calibration, setCalibration] = useState({ altitude_ft: 0, temp_f: 70 });
   const [conditions, setConditions] = useState(null);
+  const [activeGoal, setActiveGoal] = useState(null);
   const watchId = useRef(null);
 
   const pinned = hole?.green_lat && hole?.green_lng;
 
-  // Load the user's bag + calibration once.
+  // Load the user's bag + calibration + active goal once.
   useEffect(() => {
     let cancelled = false;
     axios.get(`${API}/profile/clubs`).then(r => {
       if (cancelled) return;
       setClubs(r.data?.clubs || []);
       if (r.data?.bag_calibration) setCalibration(r.data.bag_calibration);
+    }).catch(() => {});
+    axios.get(`${API}/profile/goal`).then(r => {
+      if (!cancelled) setActiveGoal(r.data?.active);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -123,6 +128,33 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
   const yards = Math.round(meters * 1.09361);
   const shot_bearing = bearingDeg(pos.lat, pos.lng, hole.green_lat, hole.green_lng);
   const suggestion = suggestClub(yards, clubs, { calibration, conditions, shot_bearing });
+
+  // Goal coaching: based on the pace across ALL holes of the current round,
+  // what's a smart target score on THIS hole? (Only shown if the user has an
+  // active goal and parent passed allHoles.)
+  let goalHint = null;
+  if (activeGoal?.target_score && Array.isArray(allHoles)) {
+    const pace = computePace(activeGoal.target_score, allHoles);
+    const par = Number(hole?.par) || 4;
+    if (pace) {
+      const allowance = pace.bogeys_allowed || 0;
+      const remainingHoles = Math.max(1, pace.remaining || 1);
+      const perHoleBudget = allowance / remainingHoles;
+      if (pace.status === 'ahead') {
+        goalHint = `Goal ${activeGoal.target_score} · bogey (${par + 1}) is fine`;
+      } else if (pace.status === 'on-pace') {
+        goalHint = perHoleBudget >= 1
+          ? `Goal ${activeGoal.target_score} · target bogey (${par + 1})`
+          : `Goal ${activeGoal.target_score} · target par (${par})`;
+      } else if (pace.status === 'behind') {
+        goalHint = `Goal ${activeGoal.target_score} · par (${par}) gets you back on pace`;
+      } else if (pace.status === 'way-behind') {
+        goalHint = (pace.birdies_needed || 0) > 0
+          ? `Goal ${activeGoal.target_score} · need par or birdie here`
+          : `Goal ${activeGoal.target_score} · par here — no bogeys to spare`;
+      }
+    }
+  }
 
   // Show conditions detail only when something materially changes the shot:
   //   • wind label (≥ 2y impact or any meaningful crosswind), or
@@ -228,6 +260,12 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
               </div>
             );
           })()}
+          {goalHint && (
+            <div className="text-[10px] text-[#4A5D23] font-bold mt-1 pt-1 border-t border-[#C96A52]/15"
+              data-testid={`caddie-goal-hint-${hole.hole}`}>
+              🎯 {goalHint}
+            </div>
+          )}
         </div>
       )}
       {!suggestion && clubs.length === 0 && (

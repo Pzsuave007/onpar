@@ -595,6 +595,7 @@ export default function PlayRound() {
               <DistanceToGreen
                 courseId={selectedCourse?.course_id}
                 hole={currentHole}
+                allHoles={holes}
                 onPinned={handleGreenPinned} />
             </div>
           </CardContent>
