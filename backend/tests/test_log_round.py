@@ -10,7 +10,7 @@ import uuid
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://quickmatch-golf.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://golf-scoring-app-2.preview.emergentagent.com").rstrip("/")
 ADMIN_EMAIL = "pzsuave007@gmail.com"
 ADMIN_PASSWORD = "MXmedia007"
 EXISTING_CHALLENGE = "chal_2bceba890dfe"

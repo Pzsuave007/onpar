@@ -25,7 +25,7 @@
 | Environment | URL | Host |
 |---|---|---|
 | Production | https://onparlive.com | cPanel / Apache / AlmaLinux (owner's cPanel, **only 1 GB RAM**) |
-| Preview    | https://quickmatch-golf.preview.emergentagent.com | Emergent sandbox (this container) |
+| Preview    | https://golf-scoring-app-2.preview.emergentagent.com | Emergent sandbox (this container) |
 
 ### NEVER run `yarn build` on the cPanel server
 The production server has 1 GB of RAM and **will crash if you try to build there**. Frontend is always pre-built inside this Emergent container.
@@ -87,7 +87,7 @@ After running `build_prod.sh`, the Emergent platform's auto-cleanup sometimes **
 
 ### `.env` workflow for testing
 If you need to test in the Emergent preview during development:
-1. Temporarily change `frontend/.env` to `REACT_APP_BACKEND_URL=https://quickmatch-golf.preview.emergentagent.com`
+1. Temporarily change `frontend/.env` to `REACT_APP_BACKEND_URL=https://golf-scoring-app-2.preview.emergentagent.com`
 2. `sudo supervisorctl restart frontend`
 3. Test via screenshot/Playwright
 4. **Restore** to `https://onparlive.com` BEFORE running `build_prod.sh`

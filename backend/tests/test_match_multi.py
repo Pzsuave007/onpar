@@ -8,7 +8,7 @@ import pytest
 import requests
 from pymongo import MongoClient
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://quickmatch-golf.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://golf-scoring-app-2.preview.emergentagent.com').rstrip('/')
 COURSE_ID = "course_992f69846733"
 TEE_NAME = "Default"
 

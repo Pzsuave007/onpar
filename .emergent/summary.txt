@@ -1,153 +1,164 @@
 <analysis>**original_problem_statement**: 
-The user is building a comprehensive golf sporting app named OnPar Live for tournaments with a PGA-style public leaderboard. Features include private/public tournaments, challenges, personal handicaps, live scoring (mobile-first carousel), birdie challenges, photo sharing, virtual vs local tournaments, and multiple game formats (Stroke play, Best ball, Match play, Random scorer). 
-PRODUCT REQUIREMENTS: 
+The user is building a comprehensive golf sporting app named OnPar Live for tournaments with a PGA-style public leaderboard. Features include private/public tournaments, challenges, personal handicaps, live scoring (mobile-first carousel), birdie challenges, photo sharing, virtual vs local tournaments, and multiple game formats (Stroke play, Best ball, Match play).
+PRODUCT REQUIREMENTS:
 - Mobile-first UX for scoring (carousel, relative to par inputs).
 - Unified Tournament views.
-- Configurable game formats (Stroke Play, Best Ball, Match Play, Random Scorer).
+- Configurable game formats (Stroke Play, Best Ball, Match Play).
 - Native Spanish application UI.
-- High engagement features during the round (Live stats, GPS, Photo sharing).
+- High engagement features during the round (Live stats, GPS, Photo sharing, Goal Coach, Caddie).
 
 **User's preferred language**: Spanish
-(INSTRUCT: The user communicates natively in Spanish. The next agent MUST respond and provide explanations in Spanish, although code, variables, commit messages, and internal thoughts should remain in English).
+(INSTRUCT: The user communicates natively in Spanish. The next agent MUST automatically detect this and respond and provide explanations to the user in Spanish ONLY, although code, variables, commit messages, and internal thoughts should remain in English).
 
 **what currently exists?** 
-A robust full-stack (React + FastAPI + MongoDB) golf app called OnPar Live. It includes local/virtual tournaments, matches, an in-app notification system, a round history dashboard, live round insights, photo sharing, and a GPS distance-to-green feature. It now also features a dedicated Admin Pin Greens tool, a My Bag club recommendation engine, robust auto-saving/auto-resuming of in-progress rounds, H2H player statistics, weather data, confetti animations for great shots, and shareable leaderboard images. Production deployment has been stabilized using systemd. 
+A robust full-stack (React + FastAPI + MongoDB) golf app called OnPar Live. Features include local/virtual tournaments, a 2-8 player Multiplayer Match Mode (replaces old 1v1), in-app notifications, Round History, live scorer UI, GPS distance-to-green, photo sharing, automated systemd deployments via , a smart Caddie for club suggestions (factors in altitude, temperature, and wind), and a newly added Goal Coach to track and pace players trying to break 90/100.
 
 **Last working item**:
-    - Last item agent was working: Implementing the 1v1 Quick Match mode (a mini-tournament between 2 players for stroke play). The agent successfully created the backend endpoints (, , ), created the frontend pages (, ), and linked them to the Dashboard and . 
+    - Last item agent was working: Investigating a white screen (blank page) crash in the  route (PlayRound.js). The user reported this immediately after the Goal Coach update was deployed. The agent took screenshots of the flow, which loaded correctly for the admin test user, indicating it might be an edge case related to the specific user's goal state, course data (e.g., missing pars), or a null pointer exception in the new pacing logic.
     - Status: IN PROGRESS
-    - Agent Testing Done: N (Backend routes were tested via bash curl, but the frontend build and full E2E flow testing needs to be completed).
-    - Which testing method agent to use? Frontend testing agent / manual testing by curl / screenshot tool.
+    - Agent Testing Done: Y (Attempted to reproduce via screenshots, but did not find the crash yet).
+    - Which testing method agent to use? Frontend testing agent / screenshot tool. 
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  None. (All previous bugs including uvicorn zombie processes, disappearing  directories, missing  imports, and auto-save failures have been resolved).
+  Issue 1: White screen crash in  (PlayRound.js) after Goal Coach update (P0)
+     - Attempted fixes: Agent used screenshot tools to navigate to , but the UI rendered successfully for the test admin without crashing.
+     - Next debug checklist: Check  and . Look for unprotected property access that might crash React (e.g., , , , or division by zero in pace math if a course has no pars). Check browser console logs from the recent screenshot attempts or review the  render method for missing optional chaining.
+     - Why fix this issue and what will be achieved with the fix? Critical blocker; the user currently cannot play a round.
+     - Status: IN PROGRESS
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? Frontend
+     - Blocked on other issue: None
 
 **In progress Task List**:
-  Task 1: Finish 1v1 Quick Match Mode
-     - Where to resume: The code for the feature is written. You need to build the frontend bundle (using yarn run v1.22.22
-info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command. inside  via bash), ensure it successfully stages, instruct the user to Save to Github, and have them run the  deploy script to verify the 1v1 creation flow works correctly.
-     - What will be achieved with this? Users can quickly challenge a friend to a 1v1 stroke play match. It leverages the existing tournament scorecard logic so H2H stats update automatically.
-     - Status: IN PROGRESS
-     - Should Test frontend/backend/both after fix? Both
-     - Blocked on something: Needs frontend build and user verification.
+  None. 
 
 **Upcoming and Future Tasks**
     Upcoming Tasks:
-    - P0: Translate the application UI entirely to Spanish. (This is highly requested by the user and should be the next major focus once the 1v1 mode is validated).
+    - P0: Match Recap viral feature: When a multiplayer Match finishes, generate a shareable image (Instagram story style) showing the winner, scores, and players using . (High priority for organic growth).
+    - P1: Translate the application UI entirely to Spanish. (Pushed back previously, but still highly requested).
+    - P1: Auto-submit casual rounds to active Virtual Tournaments: Ask players if they want to apply their casual round to an active virtual tournament happening at that course.
     - P1: Stats del leaderboard: Add advanced stats to tournament leaderboards (hardest hole, best round, stroke average per hole).
-    - P1: Auto-submit rondas casuales to active Virtual Tournaments: Ask players if they want to apply their casual round to an active virtual tournament happening at that course.
     
     Future Tasks:
-    - P1: Notification Badges: Add visual indicator badges (red dot/number) on the notification bell when someone uploads a photo to a shared tournament/challenge.
-    - P2: Refactor  into smaller route modules. (The file is now over 3,400 lines and growing).
+    - P1: Notification Badges: Add visual indicator badges (red dot/number) on the notification bell.
+    - P2: Refactor  into smaller route modules. (The file is now approaching 4,000 lines).
 
 **Completed work in this session**
-- Bug fix: Duplicate  removed and added regression tests (DONE).
-- DevOps: Completely solved the recurring backend restart bug by creating a  service () and a one-time  script.  was hardened and simplified (DONE).
-- Feature: Admin Pin Greens tab () allowing admins to paste Google Maps coordinates to pin greens, plus GPS accuracy rejection in backend (DONE).
-- Feature: My Bag () and Club Suggestions. Users input distances for their clubs;  now recommends a club based on yardage ±10% wind logic (DONE).
-- Feature: PlayRound Scorecard UI compacted to fit mobile screens without scrolling, removed duplicate photo upload button, enlarged club suggestion UI (DONE).
-- Feature: Virtual Tournaments visibility in Admin Panel (DONE).
-- Feature: Confetti animations using  for Birdie, Eagle, and Hole-in-One (DONE).
-- Feature: Weather Card on hole 1 scorecard using Open-Meteo API (displays in Fahrenheit/mph) (DONE).
-- Feature: Share Leaderboard image generator using  (renders a dark-themed story graphic for Instagram/WhatsApp) (DONE).
-- Feature: Head-to-Head (H2H) stats module added to  when viewing other players (DONE).
-- Feature: Auto-save and auto-resume in-progress rounds in . Strokes save silently every 2 seconds via debounce. Returning to  shows a Resume/Discard banner (DONE).
+- Bug fix: Fixed missing  routes in  (DONE).
+- Feature: Built Multiplayer Match Mode (2-8 players, Stroke/Best Ball/Match Play), replacing the 1v1 mode (DONE).
+- DevOps: Upgraded  to auto-cure systemd rate-limits and safely kill uvicorn zombie processes specifically on port 8005 without touching other apps (DONE).
+- DevOps: Created ✗ /opt/onpar/backend/venv missing to add a bcrypt password to the owner's Google OAuth account so email login works (DONE).
+- Bug fix: Live Scorer fixes (auto-advances to next hole on save, no longer resets to hole 1 on player change) (DONE).
+- UI Polish: Changed confusing placeholder text in Pin Greens to prevent admins from thinking coordinates were already saved (DONE).
+- Feature: Caddie Club Suggestion engine: Added Altitude, Temperature (live from Open-Meteo), and Wind effects to club suggestions. Added calibration inputs to My Bag (DONE).
+- Feature: My Goals (Goal Coach): Built  page, dashboard card, and a live pace tracking banner in  to coach players to break 90/100 (DONE).
 
 **Earlier issues found/mentioned but not fixed**
-  None.
+   - Issue 1: GoDaddy cPanel Vulnerability / SSH Blocked
+   - Debug checklist: User received a notification from GoDaddy that SSH (port 22) and cPanel were temporarily blocked due to a global cPanel security vulnerability. 
+   - Why to solve this issue and what will be achieved with this? This is an external hosting issue. The agent provided instructions on how to patch it once SSH returns. No code changes are required, but deployments () via SSH might be temporarily delayed by the user's hosting provider.
+   - Should Test frontend/backend/both after fix: NA
+   - Is recurring issue? N
 
 **Known issue recurrence from previous fork**
-  - Issue recurrence in previous fork: The  directory disappears randomly before commits due to Emergent's workspace cleanup if too much time passes between the build and the user clicking Save to Github. 
-  - Recurrence count: 4+
-  - Status: RESOLVED (Process documented heavily in . *Always run  immediately after building and demand the user click Save to Github NOW before proceeding.*)
+  - Issue recurrence in previous fork: The  directory disappears randomly before commits due to Emergent's workspace cleanup if too much time passes between the build and the user clicking Save to Github.
+  - Recurrence count: 5+
+  - Status: RESOLVED (Mitigated. Agent must ALWAYS run  immediately after building and demand the user click Save to Github NOW before proceeding with other long tasks).
+  - Issue recurrence in previous fork: Uvicorn zombie processes blocking port 8005 during deployment.
+  - Recurrence count: 3+
+  - Status: RESOLVED ( was heavily updated to correctly hunt down and SIGKILL any process bound to port 8005 originating from ).
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-Frontend: React, Tailwind CSS, Shadcn UI, Date-fns, , .
+Frontend: React, Tailwind CSS, Shadcn UI, , .
 Backend: FastAPI, Motor (Async MongoDB), PyJWT, bcrypt.
-Infrastructure: Systemd for backend process management. Open-Meteo (No API Key required) for weather data.
+Infrastructure: Systemd for backend process management. Open-Meteo (No API Key required) for weather/altitude data.
 
 **key DB schema**
-  - : {tournament_id (prefixed ), is_1v1: true, player1_id, player2_id, player1_name, player2_name, status}
+  - : {is_match: true, format: stroke | best_ball | match_play, players: []} (used for Matches)
+  - : {bag_calibration: {altitude_ft, temp_f}, home_course_id, goal: {target, par_baseline, set_at}}
   - : {user_id, status: in_progress | completed, holes, course_id, tee_name}
-  - : {tees, holes, green_lat, green_lng}
 
 **changes in tech stack**
-  - Installed  for game celebrations.
-  - Installed  for rendering leaderboard images.
-  - Integrated  free API for weather fetching.
-  - Migrated deployment restart from  scripts to .
+  - None.
 
 **All files of reference** 
-  - : Huge number of endpoints added for H2H, rounds, matches, weather logic, etc.
-  - : Heavily modified for auto-save, auto-resume, weather card, confetti, and compacted UI.
-  - , : New club suggestion logic.
-  -  and ============================================
-  OnPar Live — Deploy Update  Fri Apr 24 22:29:27 UTC 2026
+  - : Heavily modified for Goal Coach pace banner. CRITICAL: currently crashing with a white screen for the user.
+  - : New pacing and target math logic.
+  - : Heavily modified for intelligent Caddie (wind/alt/temp).
+  - , : New Caddie math logic.
+  - : Added endpoints for , .
+  - ============================================
+  OnPar Live — Deploy Update  Fri May  1 22:12:46 UTC 2026
 ============================================
 
 ✗ onpar-backend systemd service NOT installed yet.
   First-time setup — run this ONCE (as root):
       cd /home/onparliveuni2/repo && git pull && sudo bash deploy/setup_systemd.sh
-  Then come back and run fix.sh again.: Crucial deployment architecture changes.
-  - , : New 1v1 match feature files.
+  Then come back and run fix.sh again.: Completely overhauled to be bulletproof against rate-limits and zombies.
 
 **Areas that need refactoring**: 
-  -  is over 3,400 lines and manages everything from Auth to Tournaments to Invites and Weather. It must be refactored into modular routers ().
+  -  is dangerously large (~3,900 lines) and manages everything. It must be refactored into modular routers ().
 
 **key api endpoints**
-  - : Creates a 1v1 match.
+  - : Creates a multiplayer match (2-8 players).
+  - , : Manage user's break 90/100 goals.
   - : Fetches a user's currently active unsubmitted round.
-  - : Compares the active user against another user.
-  - : Saves a green pin (rejects if accuracy > 50m).
-  - : Deletes a pin (owner only).
+  - : Fetches user's bag and calibration data.
 
 **Critical Info for New Agent** 
-- **SPANISH ONLY**: Always communicate with the user in Spanish.
+- **SPANISH ONLY**: Automatically detect the user's preferred language and always communicate with the user in Spanish.
+- **WHITE SCREEN CRASH**: The user is currently blocked by a white screen on . Prioritize finding the runtime error in React (likely inside  or ).
 - **BUILD TRAP**: When you run yarn run v1.22.22
-info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command. for the frontend, you MUST stage the files immediately () and tell the user to click Save to Github *immediately*. Do not do long tasks between the build and the user's click, or the build directory will vanish and production will go blank.
-- **SYSTEMD DEPLOYMENT**: The user now uses a systemd service (). The  script automatically copies the code and runs .
-- **OWNER OVERRIDE**: Admin features like deleting green pins are hardcoded to the owner's email .
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command. or  for the frontend, you MUST stage the files immediately () and tell the user to click Save to Github *immediately*.
+- **SYSTEMD DEPLOYMENT**:  is now highly resilient. Tell the user to run ============================================
+  OnPar Live — Deploy Update  Fri May  1 22:12:49 UTC 2026
+============================================
+
+✗ onpar-backend systemd service NOT installed yet.
+  First-time setup — run this ONCE (as root):
+      cd /home/onparliveuni2/repo && git pull && sudo bash deploy/setup_systemd.sh
+  Then come back and run fix.sh again. on their server to deploy.
+- **cPanel SSH ISSUES**: The user recently experienced SSH blockages due to a GoDaddy cPanel vulnerability patch. If they cannot deploy, they just need to wait for GoDaddy to restore SSH port 22 access.
 
 **documents and test reports created in this job** 
-  -  (Updated with frontend build trap documentation).
+  - 
+  - 
 
 **Last 10 User Messages and any pending HUMAN messages** 
- 1. User: Asked for weather to be in Fahrenheit, not Celsius.
- 2. Agent: Changed unit parameters in the Open-Meteo call and built frontend.
- 3. User: Complained the value was wrong.
- 4. Agent: Explained it was a browser cache issue and proved the server response was correct.
- 5. User: Reported a bug where refreshing during a round kicks them to the course list and loses their score.
- 6. Agent: Implemented  and a Resume/Discard banner in .
- 7. User: Said they tested it but the banner didn't show up.
- 8. Agent: Found the bug—scores weren't auto-saving on +/- click. Added a 2-second debounced auto-save.
- 9. User: Confirmed the banner and resume functionality worked.
- 10. **(PENDING)** User: Asked the agent to work on the 1v1 Quick Match mode. The agent implemented the backend and frontend components but hasn't built the frontend or asked the user to deploy/verify yet.
+ 1. User: Asked if the Altitude/Temp in My Bag applies everywhere or just as a baseline.
+ 2. Agent: Clarified it's just the baseline; live weather/altitude is fetched via Open-Meteo per course.
+ 3. User: Approved adding Wind to the Caddie suggestions.
+ 4. Agent: Implemented Wind effects.
+ 5. User: Said Caddie shows too much info, asked to simplify.
+ 6. Agent: Made Caddie UI minimalist.
+ 7. User: Asked for a Goal Coach feature (e.g., Break 90) with pace tracking.
+ 8. Agent: Implemented Goal Coach in  and a pace banner in .
+ 9. User: Asked to move the target bogey suggestion from the Caddie to the Pace Banner.
+ 10. **(PENDING)** User: Reported a white screen / crash in  after the update was deployed. The agent took screenshots to reproduce but the context ended before the fix was found.
 
 **Project Health Check:**
-Healthy. Many new features added seamlessly. Production deployment process is significantly more stable thanks to systemd migration. 
+Broken (Frontend runtime crash on  for the user).
 
 **3rd Party Integrations** 
   - Google OAuth (Auth) — Emergent-managed setup
   - OpenAI SDK () — Requires User API Key ()
-  - Open-Meteo — Free API, no key required.
+  - Open-Meteo — Free API, no key required. Used heavily now for Caddie feature.
 
 **Testing status**
-  - Testing agent used after significant changes: NO (Agent performed manual bash curls for most backend logic).
+  - Testing agent used after significant changes: YES (Tested Multiplayer Match feature).
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: None new in this specific list except .
-  - Known regressions: None currently.
+  - Test files created: None new in this specific list.
+  - Known regressions: React runtime crash (White screen) on .
 
 **Credentials to test flow:**
 Check . 
-Owner: 
+Owner:  /  (Password was successfully set in DB this session)
 Primary Admin:  / 
 
 **What agent forgot to execute**
-- The agent wrote the code for 1v1 Quick Match mode but did not execute  (or yarn run v1.22.22
-info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.), did not stage the final JS bundle, and did not prompt the user to Save to Github and run  to test the new feature.
-- Has not started the P0 UI Spanish translation task.</analysis>
+- The agent was investigating the white screen on  using screenshots but the session ended before identifying the crash root cause (likely a missing optional chaining  in the new Goal Coach / Pace Banner logic in ).
+- P0 UI Spanish translation task has still not been started.</analysis>
