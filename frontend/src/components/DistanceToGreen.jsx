@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 import { Flag, Crosshair } from 'lucide-react';
 import { suggestClub } from '@/lib/clubSuggestion';
 import { fetchConditions } from '@/lib/conditions';
-import { computePace } from '@/lib/goalCoach';
 
 // Haversine distance in meters
 function distanceMeters(lat1, lng1, lat2, lng2) {
@@ -229,12 +228,6 @@ export default function DistanceToGreen({ courseId, hole, onPinned }) {
               </div>
             );
           })()}
-          {goalHint && (
-            <div className="text-[10px] text-[#4A5D23] font-bold mt-1 pt-1 border-t border-[#C96A52]/15"
-              data-testid={`caddie-goal-hint-${hole.hole}`}>
-              🎯 {goalHint}
-            </div>
-          )}
         </div>
       )}
       {!suggestion && clubs.length === 0 && (

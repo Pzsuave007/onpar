@@ -164,9 +164,13 @@ Solves the "10 players in 4 cities" pain: creator can pre-assign a course per pl
 - POST /api/tournaments/{id}/feed — Upload photo to tournament feed
 - GET /api/tournaments/invite/{code} / GET /api/challenges/invite/{code} — Invite code lookup
 
+## Changelog (recent)
+- 2026-02-01 — Fixed white screen crash in `/play` caused by stale `goalHint` JSX reference in `DistanceToGreen.jsx` (leftover from moving target-bogey hint to the Pace Banner). Also removed orphan `computePace` import. ReferenceError eliminated; Caddie renders cleanly.
+
 ## Prioritized Backlog
 ### P0
-- Translate UI to Spanish (user's native language) — next priority after deploy of Phase 12
+- Match Recap viral share image (html2canvas on match finish)
+- Translate UI to Spanish (user's native language)
 
 ### P1
 - Dedicated Round History page with filters (course, date range)
