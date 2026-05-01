@@ -14,6 +14,36 @@ const BASE_HOLES = 18;
 /** Round down 0.5 up so "expected" never undershoots by a half-stroke. */
 function roundHalfUp(n) { return Math.floor(n + 0.5); }
 
+/**
+ * Suggested score for the hole the player is ABOUT to play, based on the
+ * current pace. Returns a short string like "target bogey (5)" ready to show
+ * in the pace banner.
+ *
+ *   pace       — result of computePace()
+ *   currentPar — par of the hole being played right now
+ */
+export function holeTargetHint(pace, currentPar) {
+  if (!pace || !currentPar) return '';
+  const par = Number(currentPar) || 4;
+  const { status, bogeys_allowed = 0, birdies_needed = 0, remaining = 1 } = pace;
+  const perHoleBudget = bogeys_allowed / Math.max(1, remaining);
+  if (status === 'unreachable') return '';
+  if (status === 'ahead')
+    return `bogey (${par + 1}) is fine here`;
+  if (status === 'on-pace')
+    return perHoleBudget >= 1
+      ? `target bogey (${par + 1})`
+      : `target par (${par})`;
+  if (status === 'behind')
+    return `par (${par}) gets you back on pace`;
+  if (status === 'way-behind')
+    return birdies_needed > 0
+      ? `need par (${par}) or better — birdie helps`
+      : `par (${par}) — no bogeys to spare`;
+  return '';
+}
+
+
 /** Handicap → sensible default goal. Used to pre-fill the goal card so the
  *  first-time setup is one click. */
 export function suggestGoalForHandicap(hcp) {

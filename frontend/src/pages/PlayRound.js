@@ -12,7 +12,7 @@ import PhotoShareSheet from '@/components/PhotoShareSheet';
 import DistanceToGreen from '@/components/DistanceToGreen';
 import WeatherCard from '@/components/WeatherCard';
 import { celebrateScore } from '@/lib/celebrations';
-import { computePace } from '@/lib/goalCoach';
+import { computePace, holeTargetHint } from '@/lib/goalCoach';
 
 const TEE_COLORS = {
   black: 'bg-gray-900 text-white',
@@ -525,6 +525,7 @@ export default function PlayRound() {
           'way-behind':  'bg-[#C96A52]/20 border-[#C96A52]/50 text-[#C96A52]',
           'unreachable': 'bg-[#6B6E66]/10 border-[#6B6E66]/30 text-[#6B6E66]',
         };
+        const hint = holeTargetHint(pace, currentHole?.par);
         return (
           <div className={`mb-3 py-2 px-3 rounded-lg border ${palette[pace.status]}`}
             data-testid="goal-pace-banner">
@@ -535,6 +536,12 @@ export default function PlayRound() {
               <span className="text-xs font-bold tabular-nums">{pace.label}</span>
             </div>
             <p className="text-[11px] opacity-85 mt-0.5">{pace.caption}</p>
+            {hint && pace.remaining > 0 && (
+              <p className="text-[11px] font-bold mt-1 pt-1 border-t border-current/15"
+                data-testid="goal-hole-hint">
+                Hole {currentHole?.hole} · {hint}
+              </p>
+            )}
           </div>
         );
       })()}
