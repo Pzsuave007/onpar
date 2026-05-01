@@ -73,7 +73,7 @@ export default function PinGreensTab() {
   const savePin = async (hole) => {
     const parsed = parseCoords(inputs[hole.hole || hole.number]);
     if (!validCoords(parsed)) {
-      toast.error('Coordenadas inválidas. Pegá algo como "47.651506, -117.373635"');
+      toast.error('Invalid coordinates. Paste the lat,lng from Google Maps.');
       return;
     }
     setBusy(b => ({ ...b, [hole.hole || hole.number]: true }));
@@ -187,8 +187,8 @@ export default function PinGreensTab() {
                       <Input
                         value={raw}
                         onChange={e => setInputs(i => ({ ...i, [n]: e.target.value }))}
-                        placeholder='Ej: 47.651506, -117.373635'
-                        className="h-8 mt-1 border-[#E2E3DD] text-xs font-mono"
+                        placeholder='Paste coordinates here'
+                        className="h-8 mt-1 border-[#E2E3DD] text-xs font-mono placeholder:italic placeholder:text-[#9DA09A]"
                         data-testid={`pin-green-input-${n}`}
                         disabled={busy[n]}
                       />
