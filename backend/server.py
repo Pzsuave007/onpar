@@ -2592,9 +2592,9 @@ async def compute_hole_insights(request: Request):
 
     # 1. Eagle/Birdie/Ace recognition
     if strokes == 1:
-        insights.append({"type": "ace", "icon": "🎯", "title": "HOLE IN ONE!", "message": "¡Increíble! Esto va a los libros."})
+        insights.append({"type": "ace", "icon": "🎯", "title": "HOLE IN ONE!", "message": "Incredible! One for the books."})
     elif to_par <= -2:
-        insights.append({"type": "eagle", "icon": "🦅", "title": "¡Eagle!", "message": f"-{abs(to_par)} en el hoyo {hole_num}. Bestial."})
+        insights.append({"type": "eagle", "icon": "🦅", "title": "Eagle!", "message": f"-{abs(to_par)} on hole {hole_num}. Beast mode."})
     elif to_par == -1:
         # Check if it's their first birdie on this course
         first_birdie_here = False
@@ -2610,16 +2610,16 @@ async def compute_hole_insights(request: Request):
             first_birdie_here = not had_birdie
         if first_birdie_here:
             insights.append({"type": "first_birdie_course", "icon": "🎉",
-                             "title": "¡Primer birdie aquí!", "message": f"Tu primer birdie en {course_name}. Épico."})
+                             "title": "First birdie here!", "message": f"Your first birdie at {course_name}. Epic."})
         else:
-            insights.append({"type": "birdie", "icon": "🐦", "title": "¡Birdie!", "message": f"Par {par} conquistado."})
+            insights.append({"type": "birdie", "icon": "🐦", "title": "Birdie!", "message": f"Par {par} conquered."})
 
     # 2. Par streak (3+ consecutive holes at or under par)
     recent = [h for h in current_holes if h.get("strokes", 0) > 0 and h.get("par", 0) > 0]
     trailing = recent[-3:] if len(recent) >= 3 else []
     if len(trailing) == 3 and all((h["strokes"] - h["par"]) <= 0 for h in trailing):
         insights.append({"type": "streak", "icon": "🔥",
-                         "title": "Racha de 3 pares o mejor", "message": "En fuego — sigue así."})
+                         "title": "3-par-or-better streak", "message": "On fire — keep it going."})
 
     # 3. Beating personal average on this par-class
     if par and strokes:
@@ -2634,8 +2634,8 @@ async def compute_hole_insights(request: Request):
             diff = avg - strokes
             if diff >= 0.8:
                 insights.append({"type": "vs_average", "icon": "📈",
-                                 "title": f"Mejor que tu promedio par-{par}",
-                                 "message": f"Sacas {round(diff, 1)} strokes menos que tu promedio ({round(avg, 1)})."})
+                                 "title": f"Better than your par-{par} average",
+                                 "message": f"{round(diff, 1)} strokes under your average ({round(avg, 1)})."})
 
     # 4. Round progress milestone
     done_count = len([h for h in current_holes if h.get("strokes", 0) > 0])
@@ -2643,13 +2643,13 @@ async def compute_hole_insights(request: Request):
         front_total = sum((h.get("strokes", 0) - h.get("par", 0))
                          for h in current_holes[:9] if h.get("strokes", 0) > 0)
         insights.append({"type": "front_9", "icon": "🏁",
-                         "title": "Front 9 completado",
-                         "message": f"{'+' if front_total > 0 else ''}{front_total} al par. ¡A por el back 9!"})
+                         "title": "Front 9 complete",
+                         "message": f"{'+' if front_total > 0 else ''}{front_total} to par. On to the back 9!"})
     elif done_count == 18:
         total = sum((h.get("strokes", 0) - h.get("par", 0))
                    for h in current_holes if h.get("strokes", 0) > 0)
         insights.append({"type": "round_complete", "icon": "🏆",
-                         "title": "Ronda completa", "message": f"Final: {'+' if total > 0 else ''}{total} al par."})
+                         "title": "Round complete", "message": f"Final: {'+' if total > 0 else ''}{total} to par."})
 
     return {"insights": insights[:3]}  # cap at 3 to avoid overload
 
@@ -2795,10 +2795,10 @@ async def create_tour_invite(tour_id: str, request: Request):
             await _create_notification(
                 user_id=target_user_id,
                 notif_type="tour_invite",
-                title=f"Invitación a {tour.get('name', 'un torneo')}",
+                title=f"Invitation to {tour.get('name', 'a tournament')}",
                 message=(
-                    f"{user.get('name', 'Alguien')} te invitó"
-                    + (f" a jugar en {course_name}" if course_name else "")
+                    f"{user.get('name', 'Someone')} invited you"
+                    + (f" to play at {course_name}" if course_name else "")
                     + "."
                 ),
                 link=f"/tours/join/{code}",
