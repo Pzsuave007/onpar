@@ -50,7 +50,7 @@ export default function InviteAccept() {
         } catch {}
       }
     }).catch(() => {
-      toast.error('Invitación no encontrada o expirada');
+      toast.error('Invitation not found or expired');
       navigate('/tours');
     }).finally(() => setLoading(false));
   }, [inviteCode, navigate]);
@@ -63,16 +63,16 @@ export default function InviteAccept() {
     setAccepting(true);
     try {
       const res = await axios.post(`${API}/tours/invite/${inviteCode}/accept`);
-      toast.success('¡Bienvenido al torneo! 🎉');
+      toast.success('Welcome to the tournament! 🎉');
       navigate(`/tours/${res.data.tour_id}`);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'No se pudo aceptar');
+      toast.error(err.response?.data?.detail || 'Could not accept');
     } finally { setAccepting(false); }
   };
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-pulse text-[#1B3C35]">Cargando invitación…</div>
+      <div className="animate-pulse text-[#1B3C35]">Loading invitation…</div>
     </div>;
   }
 
@@ -89,14 +89,14 @@ export default function InviteAccept() {
               <Trophy className="h-7 w-7 text-[#C96A52]" />
             </div>
             <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#C96A52]">
-              Invitación Personal · Virtual Tournament
+              Personal Invitation · Virtual Tournament
             </p>
             <h1 className="text-2xl font-bold text-[#1B3C35] mt-2" style={{ fontFamily: 'Outfit' }}>
               {t.name || 'Tournament'}
             </h1>
             {invite.player_name && (
               <p className="text-sm text-[#6B6E66] mt-2">
-                Para: <span className="font-semibold text-[#1B3C35]">{invite.player_name}</span>
+                For: <span className="font-semibold text-[#1B3C35]">{invite.player_name}</span>
               </p>
             )}
           </div>
@@ -109,18 +109,18 @@ export default function InviteAccept() {
 
           <div className="space-y-2 py-2">
             <Row icon={<Flag className="h-4 w-4 text-[#C96A52]" />}
-              label="Tu course"
+              label="Your course"
               value={invite.course_name || (t.suggested_course_name
-                ? `${t.suggested_course_name} (sugerido)` : 'Lo eliges después')} />
+                ? `${t.suggested_course_name} (suggested)` : 'Pick later')} />
             <Row icon={<Calendar className="h-4 w-4 text-[#1B3C35]" />}
-              label="Rondas"
-              value={`${t.num_rounds || '?'} ronda${t.num_rounds === 1 ? '' : 's'}`} />
+              label="Rounds"
+              value={`${t.num_rounds || '?'} round${t.num_rounds === 1 ? '' : 's'}`} />
             <Row icon={<Trophy className="h-4 w-4 text-[#1B3C35]" />}
-              label="Formato"
-              value={t.scoring_format === 'stableford' ? 'Stableford (puntos)' : 'Stroke Play (to par)'} />
+              label="Format"
+              value={t.scoring_format === 'stableford' ? 'Stableford (points)' : 'Stroke Play (to par)'} />
             {creatorName && (
               <Row icon={<User2 className="h-4 w-4 text-[#6B6E66]" />}
-                label="Organizador"
+                label="Organizer"
                 value={creatorName} />
             )}
           </div>
@@ -128,25 +128,25 @@ export default function InviteAccept() {
           {!user ? (
             <div className="space-y-2">
               <p className="text-xs text-center text-[#6B6E66]">
-                Necesitas una cuenta de OnPar Live para unirte. Es gratis y toma 20 segundos.
+                You'll need an OnPar Live account to join. It's free and takes 20 seconds.
               </p>
               <Button onClick={accept} className="w-full bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12"
                 data-testid="invite-login-btn">
                 <LogIn className="h-4 w-4 mr-1" />
-                Iniciar Sesión o Registrarme
+                Sign In or Register
               </Button>
             </div>
           ) : (
             <Button onClick={accept} disabled={accepting}
               className="w-full bg-[#1B3C35] hover:bg-[#1B3C35]/90 h-12"
               data-testid="invite-accept-btn">
-              {accepting ? 'Aceptando…' : <>Aceptar y Unirme <ArrowRight className="h-4 w-4 ml-2" /></>}
+              {accepting ? 'Accepting…' : <>Accept and Join <ArrowRight className="h-4 w-4 ml-2" /></>}
             </Button>
           )}
 
           <p className="text-[10px] text-center text-[#6B6E66]">
             <Check className="h-3 w-3 inline mr-1 text-[#4A5D23]" />
-            Al aceptar te inscribes automáticamente con el course asignado.
+            By accepting you're automatically registered with the assigned course.
           </p>
         </CardContent>
       </Card>

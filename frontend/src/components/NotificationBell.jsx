@@ -69,12 +69,12 @@ export default function NotificationBell() {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
         <div className="flex items-center justify-between px-3 py-2 border-b border-[#E2E3DD]">
-          <p className="text-sm font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>Notificaciones</p>
+          <p className="text-sm font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>Notifications</p>
           {unread > 0 && (
             <Button variant="ghost" size="sm" onClick={markAll}
               className="h-7 text-[11px] text-[#C96A52] hover:text-[#1B3C35]"
               data-testid="mark-all-read-btn">
-              Marcar todas leídas
+              Mark all read
             </Button>
           )}
         </div>
@@ -82,7 +82,7 @@ export default function NotificationBell() {
           {items.length === 0 ? (
             <div className="py-10 text-center">
               <Bell className="h-10 w-10 text-[#D6D7D2] mx-auto mb-2" />
-              <p className="text-sm text-[#6B6E66]">Sin notificaciones</p>
+              <p className="text-sm text-[#6B6E66]">No notifications</p>
             </div>
           ) : (
             items.map(n => (

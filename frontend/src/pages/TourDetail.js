@@ -151,10 +151,10 @@ export default function TourDetail() {
 
   const copyInviteLink = (inv) => {
     const url = `${window.location.origin}/tours/join/${inv.code}`;
-    const course = inv.course_name ? `Juegas en: ${inv.course_name}\n` : '';
-    const who = inv.player_name ? `Hola ${inv.player_name}! ` : 'Hola! ';
-    const msg = `${who}Te invito al torneo "${tour?.name || 'OnPar Live'}" 🏌️\n${course}Abre este link para unirte:\n${url}`;
-    navigator.clipboard.writeText(msg).then(() => toast.success('Invitación copiada — lista para pegar en WhatsApp/email'));
+    const course = inv.course_name ? `Playing at: ${inv.course_name}\n` : '';
+    const who = inv.player_name ? `Hi ${inv.player_name}! ` : 'Hi! ';
+    const msg = `${who}I'm inviting you to the tournament "${tour?.name || 'OnPar Live'}" 🏌️\n${course}Open this link to join:\n${url}`;
+    navigator.clipboard.writeText(msg).then(() => toast.success('Invitation copied — ready to paste in WhatsApp/email'));
   };
 
   // Add Course inline (AI search + save)

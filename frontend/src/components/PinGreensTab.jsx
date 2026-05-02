@@ -83,11 +83,11 @@ export default function PinGreensTab() {
         `${API}/courses/${courseId}/holes/${hole.hole || hole.number}/green-pin`,
         { lat: parsed.lat, lng: parsed.lng, accuracy: 1 }
       );
-      toast.success(`✓ Hoyo ${hole.hole || hole.number} pinneado`);
+      toast.success(`✓ Hole ${hole.hole || hole.number} pinned`);
       setInputs(i => ({ ...i, [hole.hole || hole.number]: '' }));
       await refreshCourse();
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Error al guardar');
+      toast.error(e.response?.data?.detail || 'Save failed');
     } finally {
       setBusy(b => ({ ...b, [hole.hole || hole.number]: false }));
     }
@@ -95,14 +95,14 @@ export default function PinGreensTab() {
 
   const removePin = async (hole) => {
     const n = hole.hole || hole.number;
-    if (!window.confirm(`¿Borrar el pin del hoyo ${n}?`)) return;
+    if (!window.confirm(`Delete pin for hole ${n}?`)) return;
     setBusy(b => ({ ...b, [n]: true }));
     try {
       await axios.delete(`${API}/courses/${courseId}/holes/${n}/green-pin`);
-      toast.success(`Pin del hoyo ${n} borrado`);
+      toast.success(`Hole ${n} pin removed`);
       await refreshCourse();
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Error al borrar');
+      toast.error(e.response?.data?.detail || 'Delete failed');
     } finally {
       setBusy(b => ({ ...b, [n]: false }));
     }
@@ -113,21 +113,21 @@ export default function PinGreensTab() {
       <Card className="border-[#E2E3DD] shadow-none bg-[#F4E9D8]/40">
         <CardContent className="py-4 text-sm text-[#1B3C35] space-y-1.5">
           <p className="font-bold flex items-center gap-1.5">
-            <Flag className="h-4 w-4 text-[#C96A52]" /> Pinear greens desde Google Maps
+            <Flag className="h-4 w-4 text-[#C96A52]" /> Pin greens from Google Maps
           </p>
           <p className="text-xs text-[#6B6E66]">
-            1. Abrí Google Maps, buscá el curso y ubicá el centro del green.
-            2. Clic derecho sobre el centro del green → aparecen las coordenadas (ej. <code className="bg-white px-1 rounded">47.651506, -117.373635</code>) → clic para copiar.
-            3. Pegá en el input del hoyo correspondiente y dale "Guardar".
+            1. Open Google Maps, find the course and locate the center of the green.
+            2. Right-click the center of the green → coordinates appear (e.g. <code className="bg-white px-1 rounded">47.651506, -117.373635</code>) → click to copy.
+            3. Paste into the matching hole's input and click "Save".
           </p>
         </CardContent>
       </Card>
 
       <div>
-        <Label className="text-[#1B3C35] text-sm font-bold">Curso</Label>
+        <Label className="text-[#1B3C35] text-sm font-bold">Course</Label>
         <Select value={courseId} onValueChange={setCourseId}>
           <SelectTrigger className="mt-1 border-[#E2E3DD]" data-testid="pin-greens-course-select">
-            <SelectValue placeholder="Elegí un curso..." />
+            <SelectValue placeholder="Choose a course..." />
           </SelectTrigger>
           <SelectContent>
             {courses.map(c => (
@@ -141,7 +141,7 @@ export default function PinGreensTab() {
 
       {courseId && holes.length === 0 && (
         <p className="text-sm text-[#6B6E66] py-8 text-center">
-          Este curso no tiene hoyos configurados todavía.
+          This course has no holes configured yet.
         </p>
       )}
 
@@ -151,9 +151,9 @@ export default function PinGreensTab() {
             <div className="divide-y divide-[#E2E3DD]">
               {/* Header */}
               <div className="grid grid-cols-[44px_40px_1fr_auto] gap-2 items-center py-2 px-3 bg-[#E8E9E3]/50 text-[10px] font-bold text-[#6B6E66] uppercase tracking-wider">
-                <span>Hoyo</span>
+                <span>Hole</span>
                 <span>Par</span>
-                <span>Coordenadas</span>
+                <span>Coordinates</span>
                 <span></span>
               </div>
               {holes.map((h) => {
@@ -178,11 +178,11 @@ export default function PinGreensTab() {
                             target="_blank" rel="noopener noreferrer"
                             className="text-[#C96A52] hover:underline inline-flex items-center gap-0.5 shrink-0"
                             data-testid={`pin-green-view-${n}`}>
-                            <ExternalLink className="h-3 w-3" /> Ver
+                            <ExternalLink className="h-3 w-3" /> View
                           </a>
                         </div>
                       ) : (
-                        <span className="text-xs text-[#6B6E66]">Sin pinear</span>
+                        <span className="text-xs text-[#6B6E66]">Not pinned</span>
                       )}
                       <Input
                         value={raw}
@@ -200,7 +200,7 @@ export default function PinGreensTab() {
                         disabled={busy[n] || !raw.trim()}
                         onClick={() => savePin(h)}
                         data-testid={`pin-green-save-${n}`}>
-                        {busy[n] ? '…' : 'Guardar'}
+                        {busy[n] ? '…' : 'Save'}
                       </Button>
                       {pinned && isOwner && (
                         <Button

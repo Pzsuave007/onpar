@@ -654,7 +654,7 @@ export default function PlayRound() {
         onOpenChange={setShowPhotoShare}
         courseId={selectedCourse?.course_id}
         defaultCaption={currentHole
-          ? `Hoyo ${currentHole.hole} · Par ${currentHole.par}${currentHole.strokes > 0 ? ` · ${currentHole.strokes} strokes (${currentHole.strokes === currentHole.par ? 'par' : currentHole.strokes > currentHole.par ? '+' + (currentHole.strokes - currentHole.par) : (currentHole.strokes - currentHole.par)})` : ''}${selectedCourse?.course_name ? ` · ${selectedCourse.course_name}` : ''}`
+          ? `Hole ${currentHole.hole} · Par ${currentHole.par}${currentHole.strokes > 0 ? ` · ${currentHole.strokes} strokes (${currentHole.strokes === currentHole.par ? 'par' : currentHole.strokes > currentHole.par ? '+' + (currentHole.strokes - currentHole.par) : (currentHole.strokes - currentHole.par)})` : ''}${selectedCourse?.course_name ? ` · ${selectedCourse.course_name}` : ''}`
           : ''}
       />
 

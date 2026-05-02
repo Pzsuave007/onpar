@@ -83,12 +83,12 @@ export default function RoundHistory() {
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-          <StatCard label="Rondas" value={stats.count} icon={<Flag className="h-4 w-4" />} />
-          <StatCard label="Mejor" value={fmt(stats.best)} valueClr={clr(stats.best)}
+          <StatCard label="Rounds" value={stats.count} icon={<Flag className="h-4 w-4" />} />
+          <StatCard label="Best" value={fmt(stats.best)} valueClr={clr(stats.best)}
             icon={<TrendingDown className="h-4 w-4 text-[#C96A52]" />} />
-          <StatCard label="Peor" value={fmt(stats.worst)} valueClr={clr(stats.worst)}
+          <StatCard label="Worst" value={fmt(stats.worst)} valueClr={clr(stats.worst)}
             icon={<TrendingUp className="h-4 w-4 text-[#1D2D44]" />} />
-          <StatCard label="Promedio" value={fmt(Math.round(stats.avg))} valueClr={clr(Math.round(stats.avg))}
+          <StatCard label="Average" value={fmt(Math.round(stats.avg))} valueClr={clr(Math.round(stats.avg))}
             icon={<Trophy className="h-4 w-4 text-[#4A5D23]" />} />
         </div>
       )}
@@ -98,7 +98,7 @@ export default function RoundHistory() {
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-[#C96A52]" />
-            <p className="text-sm font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>Filtrar rondas</p>
+            <p className="text-sm font-bold text-[#1B3C35]" style={{ fontFamily: 'Outfit' }}>Filter rounds</p>
             <button onClick={resetFilters}
               className="ml-auto text-[11px] text-[#C96A52] hover:text-[#1B3C35] font-bold"
               data-testid="reset-filters-btn">
@@ -108,7 +108,7 @@ export default function RoundHistory() {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#6B6E66]" />
-              <Input placeholder="Buscar course…" value={q} onChange={e => setQ(e.target.value)}
+              <Input placeholder="Search course…" value={q} onChange={e => setQ(e.target.value)}
                 className="pl-8 h-10 border-[#E2E3DD]" data-testid="history-search" />
             </div>
             <Select value={courseFilter} onValueChange={setCourseFilter}>
@@ -116,24 +116,24 @@ export default function RoundHistory() {
                 <SelectValue placeholder="Course" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos los courses</SelectItem>
+                <SelectItem value="all">All courses</SelectItem>
                 {courses.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={sourceFilter} onValueChange={setSourceFilter}>
               <SelectTrigger className="h-10 border-[#E2E3DD]" data-testid="filter-source">
-                <SelectValue placeholder="Fuente" />
+                <SelectValue placeholder="Source" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Cualquier origen</SelectItem>
+                <SelectItem value="all">Any source</SelectItem>
                 <SelectItem value="manual">Manual</SelectItem>
                 <SelectItem value="live_scoring">Live Scoring</SelectItem>
                 <SelectItem value="challenge_log">Challenge</SelectItem>
               </SelectContent>
             </Select>
             <div className="grid grid-cols-2 gap-2">
-              <DatePicker value={startDate} onChange={setStartDate} placeholder="Desde" testId="filter-start" />
-              <DatePicker value={endDate} onChange={setEndDate} placeholder="Hasta" testId="filter-end" />
+              <DatePicker value={startDate} onChange={setStartDate} placeholder="From" testId="filter-start" />
+              <DatePicker value={endDate} onChange={setEndDate} placeholder="To" testId="filter-end" />
             </div>
           </div>
         </CardContent>
@@ -141,18 +141,18 @@ export default function RoundHistory() {
 
       {/* Results */}
       {loading ? (
-        <p className="text-center py-10 text-[#6B6E66]">Cargando rondas…</p>
+        <p className="text-center py-10 text-[#6B6E66]">Loading rounds…</p>
       ) : filtered.length === 0 ? (
         <Card className="border-[#E2E3DD] shadow-none">
           <CardContent className="py-12 text-center">
             <Flag className="h-10 w-10 text-[#D6D7D2] mx-auto mb-3" />
             <p className="text-sm text-[#6B6E66]">
-              {rounds.length === 0 ? 'Aún no tienes rondas registradas.' : 'No hay rondas con esos filtros.'}
+              {rounds.length === 0 ? 'No rounds yet.' : 'No rounds match those filters.'}
             </p>
             {rounds.length === 0 && (
               <Button className="mt-4 bg-[#C96A52] hover:bg-[#C96A52]/90"
                 onClick={() => navigate('/play')}>
-                Juega tu primera ronda
+                Play your first round
               </Button>
             )}
           </CardContent>
@@ -164,7 +164,7 @@ export default function RoundHistory() {
               data-testid={`round-row-${r.round_id}`}>
               <CardContent className="p-3 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-[#1B3C35] truncate">{r.course_name || 'Sin course'}</p>
+                  <p className="font-semibold text-sm text-[#1B3C35] truncate">{r.course_name || 'No course'}</p>
                   <div className="flex items-center gap-2 mt-0.5 text-[10px] text-[#6B6E66]">
                     <Calendar className="h-3 w-3" />
                     {(r.created_at || '').split('T')[0]}
